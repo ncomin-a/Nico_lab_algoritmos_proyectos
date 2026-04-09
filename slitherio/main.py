@@ -191,8 +191,31 @@ if __name__ == "__main__":
                 # Usuario cerró la ventana
                 break
             else:
-                # Jugador seleccionó "Play vs AI"
-                run_game(player_name)
+                # Jugador seleccionó "Play vs AI" - ejecutar versión avanzada
+                try:
+                    # Importar y ejecutar el juego avanzado
+                    spec_advanced = importlib.util.spec_from_file_location(
+                        "slither_advanced", 
+                        os.path.join(script_dir, "slither_advanced.py")
+                    )
+                    advanced_modulo = importlib.util.module_from_spec(spec_advanced)
+                    spec_advanced.loader.exec_module(advanced_modulo)
+                    
+                    # Configurar el nombre del jugador
+                    advanced_modulo.settings = advanced_modulo.GameSettings()
+                    game = advanced_modulo.GameManager(advanced_modulo.settings)
+                    game.player_snake.name = player_name
+                    
+                    # Ejecutar el juego
+                    game.run()
+                    
+                except Exception as e:
+                    print(f"Error al ejecutar el juego avanzado: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # Fallback al juego simple si hay error
+                    run_game(player_name)
     except Exception as e:
         print(f"Error al cargar el menú: {e}")
         import traceback

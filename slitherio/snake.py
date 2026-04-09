@@ -234,73 +234,122 @@ class Snake:
         )
 
     def draw(self, screen, camera):
-        """Dibuja la serpiente con estilo más suave"""
-        if not self.alive:
+        """Dibuja la serpiente estilo Slither.io: cuerpo fluido continuo"""
+        if not self.alive or len(self.body) < 2:
             return
 
-        radius = max(4, int(self.mass / 10))
+        # Calcular radio base según la masa
+        head_radius = max(5, int(math.sqrt(self.mass) * 1.2))
+        
+        # Convertir body a coordenadas de pantalla
+        screen_points = [camera.apply(p) for p in self.body]
 
-        # Cuerpo tipo línea continua
-        if len(self.body) > 1:
-            points = [camera.apply(p) for p in self.body]
-            pygame.draw.lines(
-                screen,
-                self.color,
-                False,
-                [(int(x), int(y)) for x, y in points],
-                radius * 2
-            )
+        # 🎨 DIBUJAR CUERPO SUAVE Y FLUIDO
+        if len(screen_points) > 2:
+            # Dibujar como polilínea suave con ancho variable
+            for i in range(len(screen_points) - 1):
+                x1, y1 = screen_points[i]
+                x2, y2 = screen_points[i + 1]
+                
+                # El radio disminuye hacia la cola
+                progress = i / len(screen_points)
+                current_radius = head_radius * (1 - progress * 0.6)
+                line_width = max(2, int(current_radius * 2))
+                
+                # Color se desvanece hacia la cola
+                fade = 1 - progress * 0.3
+                faded_color = tuple(int(c * fade) for c in self.color)
+                
+                # Dibujar segmento
+                pygame.draw.line(
+                    screen,
+                    faded_color,
+                    (int(x1), int(y1)),
+                    (int(x2), int(y2)),
+                    line_width
+                )
 
-        # Segmentos circulares para suavizar bordes
-        for i, seg in enumerate(self.body):
-            x, y = camera.apply(seg)
-            fade = 1 - (i / len(self.body)) * 0.4
-            faded_color = tuple(int(c * fade) for c in self.color)
-            pygame.draw.circle(screen, faded_color, (int(x), int(y)), radius)
+            # 🔵 SUAVIZAR CON CÍRCULOS EN CADA SEGMENTO (transición suave)
+            for i in range(len(screen_points)):
+                x, y = screen_points[i]
+                progress = i / len(screen_points)
+                current_radius = head_radius * (1 - progress * 0.6)
+                fade = 1 - progress * 0.3
+                faded_color = tuple(int(c * fade) for c in self.color)
+                
+                pygame.draw.circle(
+                    screen,
+                    faded_color,
+                    (int(x), int(y)),
+                    max(1, int(current_radius))
+                )
 
-        # Cabeza
-        head_x, head_y = camera.apply(self.body[0])
-
+        # 🔴 CABEZA MÁS DEFINIDA
+        head_x, head_y = screen_points[0]
+        
+        # Círculo principal de la cabeza
         pygame.draw.circle(
             screen,
             self.color,
             (int(head_x), int(head_y)),
-            radius + 2
+            head_radius
         )
-
-        # Brillo en la cabeza
+        
+        # Brillo / reflejo en la cabeza
         pygame.draw.circle(
             screen,
-            (255, 255, 255),
-            (int(head_x), int(head_y)),
-            max(1, radius // 2)
+            tuple(min(255, c + 60) for c in self.color),
+            (int(head_x - head_radius * 0.3), int(head_y - head_radius * 0.3)),
+            max(1, head_radius // 3)
         )
 
-        # Ojos
-        eye_distance = radius * 0.7
-        eye_size = max(2, radius // 3)
+        # 👁️ OJOS REALISTAS
+        eye_distance = head_radius * 0.6
+        eye_size = max(3, head_radius // 2.5)
         perp_angle = self.angle + math.pi / 2
 
-        ex1 = head_x + math.cos(self.angle) * eye_distance + math.cos(perp_angle) * eye_size
-        ey1 = head_y + math.sin(self.angle) * eye_distance + math.sin(perp_angle) * eye_size
+        # Ojo izquierdo
+        ex1 = head_x + math.cos(self.angle) * eye_distance + math.cos(perp_angle) * eye_size * 0.8
+        ey1 = head_y + math.sin(self.angle) * eye_distance + math.sin(perp_angle) * eye_size * 0.8
 
-        ex2 = head_x + math.cos(self.angle) * eye_distance - math.cos(perp_angle) * eye_size
-        ey2 = head_y + math.sin(self.angle) * eye_distance - math.sin(perp_angle) * eye_size
+        # Ojo derecho
+        ex2 = head_x + math.cos(self.angle) * eye_distance - math.cos(perp_angle) * eye_size * 0.8
+        ey2 = head_y + math.sin(self.angle) * eye_distance - math.sin(perp_angle) * eye_size * 0.8
 
+        # Ojos blancos
         pygame.draw.circle(screen, (255, 255, 255), (int(ex1), int(ey1)), eye_size)
         pygame.draw.circle(screen, (255, 255, 255), (int(ex2), int(ey2)), eye_size)
 
-        pygame.draw.circle(screen, (0, 0, 0), (int(ex1), int(ey1)), max(1, eye_size // 2))
-        pygame.draw.circle(screen, (0, 0, 0), (int(ex2), int(ey2)), max(1, eye_size // 2))
+        # Pupilas negras
+        pupil_size = max(1, eye_size // 2)
+        pygame.draw.circle(screen, (0, 0, 0), (int(ex1), int(ey1)), pupil_size)
+        pygame.draw.circle(screen, (0, 0, 0), (int(ex2), int(ey2)), pupil_size)
 
-        # Nombre
-        font_small = pygame.font.SysFont(None, 18)
+        # ✨ BRILLO EN LAS PUPILAS
+        pygame.draw.circle(
+            screen,
+            (200, 200, 200),
+            (int(ex1 - pupil_size * 0.5), int(ey1 - pupil_size * 0.5)),
+            max(1, pupil_size // 2)
+        )
+        pygame.draw.circle(
+            screen,
+            (200, 200, 200),
+            (int(ex2 - pupil_size * 0.5), int(ey2 - pupil_size * 0.5)),
+            max(1, pupil_size // 2)
+        )
+
+        # 📛 NOMBRE
+        font_small = pygame.font.SysFont("arial", 16, bold=True)
         name_text = font_small.render(self.name, True, (255, 255, 255))
-        screen.blit(name_text, (head_x - 20, head_y - 25))
+        screen.blit(name_text, (head_x - name_text.get_width() // 2, head_y - head_radius - 25))
 
+        # 📊 MASA (solo para el jugador)
         if not self.is_ai:
-            mass_text = font_small.render(f"{int(self.mass)}", True, self.color)
-            screen.blit(mass_text, (head_x - 10, head_y - 5))
+            mass_text = pygame.font.SysFont("arial", 14, bold=False).render(
+                f"{int(self.mass)}", True, self.color
+            )
+            screen.blit(mass_text, (head_x - mass_text.get_width() // 2, head_y - head_radius - 8))
 
     def get_lifetime(self):
         """Retorna tiempo vivo en segundos"""

@@ -248,6 +248,22 @@ def draw_game_over(screen, player, snakes):
     draw_text(screen, f"Score Final: {player.score}", font_large, (0, 255, 100),
               center_x, stats_y, center=True)
     
+    draw_text(screen, f"Masa Máxima: {int(player.max_mass)}", font_medium, (255, 150, 0),
+              center_x, stats_y + 50, center=True)
+    
+    draw_text(screen, f"Kills: {player.kills} | Tiempo: {int(player.get_lifetime())}s", 
+              font_medium, (255, 100, 100),
+              center_x, stats_y + 90, center=True)
+    
+    # 🆕 Instrucción para reiniciar
+    draw_text(screen, "Presiona R para reiniciar", font_small, (100, 255, 100),
+              center_x, center_y + 100, center=True)
+    
+    # 🆕 Mostrar tu ranking
+    your_rank = sorted(snakes, key=lambda s: s.score, reverse=True).index(player) + 1 if player in snakes else 0
+    draw_text(screen, f"Tu ranking: #{your_rank}", font_small, (200, 200, 255),
+              center_x, center_y + 160, center=True)
+    
     draw_text(screen, f"Masa Máxima: {int(player.max_mass)}", font_medium, (100, 200, 255),
               center_x, stats_y + 50, center=True)
     

@@ -99,6 +99,7 @@ class Camera:
         
         self.x = max(-margin, min(self.x, WORLD_SIZE + margin))
         self.y = max(-margin, min(self.y, WORLD_SIZE + margin))
+        self.y = max(-margin, min(self.y, WORLD_SIZE + margin))
 
     def shake_camera(self, intensity=5):
         """

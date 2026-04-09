@@ -14,10 +14,10 @@ class Particle:
         if vel:
             self.vel = vel
         else:
-            angle = random.uniform(0, 6.28)
+            import math
+            angle = random.uniform(0, 2 * math.pi)
             speed = random.uniform(1, 3)
-            self.vel = [speed * pygame.math.Vector2(1,0).rotate_rad(angle).x,
-                        speed * pygame.math.Vector2(1,0).rotate_rad(angle).y]
+            self.vel = [speed * math.cos(angle), speed * math.sin(angle)]
 
     def update(self):
         self.x += self.vel[0]

@@ -9,6 +9,7 @@ from ui import draw_hud, draw_minimap, draw_ranking, draw_game_over
 from ranking import save
 import particles
 
+
 def run_game(player_name):
     """Ejecuta el juego principal"""
     try:
@@ -173,21 +174,26 @@ if __name__ == "__main__":
     import importlib.util
     import os
     
-    # Obtener la ruta del directorio actual del script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pantalla_path = os.path.join(script_dir, "pantalla de inicio.py")
-    
-    # Importar dinámicamente el módulo de pantalla de inicio
-    spec = importlib.util.spec_from_file_location("pantalla_inicio", pantalla_path)
-    pantalla_modulo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(pantalla_modulo)
-    
-    # Mostrar menú y esperar respuesta
-    while True:
-        player_name = pantalla_modulo.show_menu()
-        if player_name is None:
-            # Usuario cerró la ventana
-            break
-        else:
-            # Jugador seleccionó "Play vs AI"
-            run_game(player_name)
+    try:
+        # Obtener la ruta del directorio actual del script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        pantalla_path = os.path.join(script_dir, "pantalla de inicio.py")
+        
+        # Importar dinámicamente el módulo de pantalla de inicio
+        spec = importlib.util.spec_from_file_location("pantalla_inicio", pantalla_path)
+        pantalla_modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pantalla_modulo)
+        
+        # Mostrar menú y esperar respuesta
+        while True:
+            player_name = pantalla_modulo.show_menu()
+            if player_name is None:
+                # Usuario cerró la ventana
+                break
+            else:
+                # Jugador seleccionó "Play vs AI"
+                run_game(player_name)
+    except Exception as e:
+        print(f"Error al cargar el menú: {e}")
+        import traceback
+        traceback.print_exc()

@@ -1,5 +1,5 @@
 import random
-from settings import *
+from constants import *
 
 def generate():
     """Genera comida aleatoria en el mapa"""

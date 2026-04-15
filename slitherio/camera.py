@@ -1,4 +1,4 @@
-from settings import WIDTH, HEIGHT, WORLD_SIZE
+from constants import WIDTH, HEIGHT, WORLD_SIZE
 import math
 
 class Camera:

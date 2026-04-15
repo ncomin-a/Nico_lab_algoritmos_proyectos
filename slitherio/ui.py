@@ -1,6 +1,6 @@
 import pygame
 import math
-from settings import *
+from constants import *
 
 # 🆕 Cache de fuentes para mejor rendimiento
 FONT_CACHE = {}
@@ -62,7 +62,7 @@ def draw_hud(screen, player):
               panel_x + 15, panel_y + 45)
 
     # Masa (tamaño)
-    draw_text(screen, f"Masa: {int(player.mass)}", font_medium, (255, 100, 100),
+    draw_text(screen, f"Length: {player.length}", font_medium, (255, 100, 100),
               panel_x + 15, panel_y + 75)
 
     # Kills
@@ -79,8 +79,8 @@ def draw_hud(screen, player):
     pygame.draw.rect(screen, (60, 60, 60), 
                      (boost_x, boost_y, boost_width, boost_height), 1)
 
-    # Barra de boost (proporcional a la masa)
-    boost_fill = int(boost_width * (player.mass / 100))
+    # Barra de boost (proporcional a la longitud)
+    boost_fill = int(boost_width * min(1.0, player.length / 50))
     pygame.draw.rect(screen, (255, 200, 0),
                      (boost_x, boost_y, boost_fill, boost_height))
 
@@ -88,14 +88,14 @@ def draw_hud(screen, player):
               boost_x, boost_y - 20)
 
     # 🆕 Información adicional
-    lifetime = int(player.get_lifetime())
+    lifetime = int(player.lifetime)
     minutes = lifetime // 60
     seconds = lifetime % 60
-    draw_text(screen, f"Tiempo: {minutes}:{seconds:02d}", font_small, (150, 150, 200),
+    draw_text(screen, f"Time: {minutes}:{seconds:02d}", font_small, (150, 150, 200),
               panel_x + 15, panel_y + 135)
 
     # 🆕 Contador de comida comida
-    draw_text(screen, f"Comidas: {player.total_eaten}", font_small, (0, 255, 120),
+    draw_text(screen, f"Foods: {player.foods_eaten}", font_small, (0, 255, 120),
               boost_x + 30, boost_y + 30)
 
     # 🆕 Indicador de estado
@@ -107,7 +107,7 @@ def draw_hud(screen, player):
 
 def draw_minimap(screen, snakes, food):
     """
-    🆕 Minimapa mejorado con:
+    Minimapa mejorado con:
     - Borde decorativo
     - Mostrar solo serpientes vivas
     - Escala correcta
@@ -116,48 +116,51 @@ def draw_minimap(screen, snakes, food):
     size = MINIMAP_SIZE
     pos_x, pos_y = MINIMAP_POSITION
 
-    # 🆕 Superficie del minimapa
+    # Superficie del minimapa
     surf = pygame.Surface((size, size))
     surf.fill(GRID_COLOR)
 
     scale = size / WORLD_SIZE
 
-    # 🆕 Dibujar comida (pequeña)
+    # Dibujar comida (pequeña)
     for f in food:
         fx = int(f[0] * scale)
         fy = int(f[1] * scale)
         if 0 <= fx < size and 0 <= fy < size:
             pygame.draw.circle(surf, FOOD_COLOR, (fx, fy), 1)
 
-    # 🆕 Dibujar serpientes (solo vivas)
+    # Dibujar serpientes (solo vivas)
     for s in snakes:
-        if not s.alive:  # 🆕 No mostrar muertas
+        if not s.alive:  # No mostrar muertas
             continue
             
-        x = int(s.body[0][0] * scale)
-        y = int(s.body[0][1] * scale)
+        x = int(s.head.x * scale)
+        y = int(s.head.y * scale)
         
         if 0 <= x < size and 0 <= y < size:
-            # 🆕 Tamaño proporcional a la masa
-            radius = max(2, int(math.sqrt(s.mass) / 2))
+            # Tamaño proporcional a la longitud
+            radius = max(2, int(math.sqrt(len(s.segments)) / 2))
             
-            # 🆕 El jugador es más brillante
-            color = (255, 200, 100) if not s.is_ai else s.color
+            # El jugador es más brillante
+            if s.is_human:
+                color = (255, 200, 100)
+            else:
+                color = s.body_color
             pygame.draw.circle(surf, color, (x, y), radius)
             
-            # 🆕 Punto blanco en el centro (cabeza)
+            # Punto blanco en el centro (cabeza)
             pygame.draw.circle(surf, (255, 255, 255), (x, y), 1)
 
-    # 🆕 Dibujar borde del minimapa
+    # Dibujar borde del minimapa
     pygame.draw.rect(screen, (150, 150, 200), 
                      (pos_x - 2, pos_y - 2, size + 4, size + 4), 2)
 
     # Mostrar minimapa
     screen.blit(surf, (pos_x, pos_y))
 
-    # 🆕 Título del minimapa
+    # Título del minimapa
     font_small = get_font(14)
-    draw_text(screen, "Mapa", font_small, (150, 150, 200),
+    draw_text(screen, "Map", font_small, (150, 150, 200),
               pos_x + size // 2, pos_y - 20, center=True)
 
 
@@ -199,13 +202,13 @@ def draw_ranking(screen, snakes, max_show=5):
     draw_text(screen, "🏆 RANKING", font_medium, (255, 200, 0),
               rank_x + rank_width // 2, rank_y + 5, center=True)
 
-    # 🆕 Mostrar jugadores
+    # Mostrar jugadores
     for i, snake in enumerate(sorted_snakes):
         y = rank_y + 35 + (i * 30)
         
         # Número de posición
         pos_text = f"{i+1}. {snake.name[:12]}"
-        draw_text(screen, pos_text, font_small, snake.color,
+        draw_text(screen, pos_text, font_small, snake.body_color,
                   rank_x + 10, y)
         
         # Score

@@ -1,222 +1,290 @@
 import pygame
 import random
 import sys
-from settings import *
-from snake import Snake
+import os
+import math
+
+# Ensure the script can find modules in its directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from constants import *
+from snake import PlayerSnake, BotSnake
 from food import generate
 from camera import Camera
-from ui import draw_hud, draw_minimap, draw_ranking, draw_game_over
+from ui import draw_hud, draw_minimap
 from ranking import save
 import particles
 
 
+# =========================
+# 🧠 SPAWN BOTS
+# =========================
+def spawn_bots(snakes, count=1):
+    """Spawns new bot snakes"""
+    bot_ids = [s.id for s in snakes if not s.is_human]
+    next_id = max(bot_ids) + 1 if bot_ids else 100
+    
+    for i in range(count):
+        color_info = BOT_COLORS[(next_id + i) % len(BOT_COLORS)]
+        bot = BotSnake(
+            color_info,
+            next_id + i,
+            difficulty=1.0,
+            x=random.randint(300, WORLD_W - 300),
+            y=random.randint(300, WORLD_H - 300)
+        )
+        snakes.append(bot)
+
+
+# =========================
+# 💥 DROP FOOD FROM DEAD SNAKE
+# =========================
+def drop_food_from_snake(snake, food_list):
+    """Drops food when a snake dies"""
+    drops = snake.get_food_drops()
+    for drop_pos in drops:
+        food_list.append(drop_pos)
+
+
+# =========================
+# 🎮 MAIN GAME LOOP
+# =========================
 def run_game(player_name):
-    """Ejecuta el juego principal"""
-    try:
-        pygame.init()
-        screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Slither.io")
-        clock = pygame.time.Clock()
-    except Exception as e:
-        print(f"Error al inicializar Pygame: {e}")
-        return False
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Slither.io PRO")
+    clock = pygame.time.Clock()
 
-    # Inicializar sistema de partículas
     particles.particles = []
-
     camera = Camera()
     food = generate()
+    powerups = []
 
-    player = Snake(1500, 1500, (255, 0, 0), player_name)
+    # Create player snake
+    player_color = PLAYER_COLORS[0]
+    player = PlayerSnake(player_color, 0, PLAYER_KEYS[0], x=WORLD_W//2, y=WORLD_H//2)
     snakes = [player]
 
-    # Crear IA con nombres diferentes
-    bot_names = ["Bot1", "Bot2", "Bot3", "Bot4", "Bot5"]
-    bot_colors = [(0, 255, 0), (255, 255, 0), (0, 255, 255), (255, 0, 255), (255, 128, 0)]
-
-    for i in range(5):
-        snakes.append(Snake(
-            random.randint(500, 2500),
-            random.randint(500, 2500),
-            bot_colors[i],
-            bot_names[i],
-            is_ai=True
-        ))
+    # Spawn initial bots
+    spawn_bots(snakes, BOT_COUNT_DEFAULT)
 
     running = True
     game_over = False
+    delta_time = 1.0 / FPS
+
+    # Font for drawing names
+    name_font = pygame.font.SysFont("arial", 16, bold=True)
 
     while running:
-        clock.tick(FPS)
+        dt = clock.tick(FPS) / 1000.0  # Convert to seconds
+        if dt > 0.05:  # Cap dt to prevent huge jumps
+            dt = 0.05
 
-        # 🔶 Manejo de eventos
+        # =========================
+        # INPUT
+        # =========================
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 running = False
-            # Presionar R para reiniciar después de game over
-            if e.type == pygame.KEYDOWN and e.key == pygame.K_r and game_over:
-                game_over = False
-                particles.particles = []
-                food = generate()
-                player = Snake(1500, 1500, (255, 0, 0), player_name)
-                snakes = [player]
-                for i in range(5):
-                    snakes.append(Snake(
-                        random.randint(500, 2500),
-                        random.randint(500, 2500),
-                        bot_colors[i],
-                        bot_names[i],
-                        is_ai=True
-                    ))
-            # Presionar ESC para volver a inicio
-            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-                running = False
-                return True
 
-        screen.fill((15, 15, 15))
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    return False
 
-        # 🔶 Actualizar cámara (solo si el jugador está vivo)
+                if e.key == pygame.K_r and game_over:
+                    pygame.quit()
+                    return run_game(player_name)
+            
+
+
+        # =========================
+        # CAMERA UPDATE (before input for accurate mouse transform)
+        # =========================
+        if player.alive and player.segments:
+            # Calculate zoom based on snake size
+            mass = len(player.segments) * SEGMENT_RADIUS
+            target_zoom = max(0.3, min(1.5, 50 / (mass / 10 + 1)))
+            
+            # Smooth zoom
+            zoom_diff = target_zoom - camera.zoom
+            camera.zoom += zoom_diff * 0.08
+
+            # Update camera position
+            camera.update((player.head.x, player.head.y), mass)
+
+        # Handle player input
         if player.alive:
-            camera.update(player.body[0], player.mass)
-        else:
-            # Seguir la última posición conocida del jugador
-            if player.body:
-                camera.update(player.body[0], player.mass)
-
-        # 🔶 Dibujar comida
-        for f in food:
-            x, y = camera.apply(f)
-            pygame.draw.circle(screen, (0, 255, 120), (int(x), int(y)), 3)
-
-        # 🔶 Actualizar serpientes
-        for s in snakes[:]:
-            s.update(food, snakes, camera)
-            s.eat(food)
+            mouse_pos = pygame.mouse.get_pos()
+            player.handle_mouse_input(mouse_pos, camera.x, camera.y, camera.zoom)
             
-            # Verificar colisiones
-            s.check_collision(snakes)
-            
-            # Eliminar serpientes muertas (excepto el jugador)
-            if not s.alive and s != player:
+            # Handle boost with SPACE or LSHIFT
+            keys_held = pygame.key.get_pressed()
+            player.boosting = keys_held[pygame.K_SPACE] or keys_held[pygame.K_LSHIFT]
+
+        # =========================
+        # UPDATE SNAKES
+        # =========================
+        for s in snakes:
+            if s.alive:
+                if s.is_human:
+                    s.update(dt)
+                else:
+                    s.ai_update(dt, food, snakes, powerups)
+
+        # =========================
+        # FOOD EATING
+        # =========================
+        eaten = []
+        for food_item in food:
+            fx, fy = food_item
+            # Check all snakes eating food
+            for snake in snakes:
+                if not snake.alive:
+                    continue
+                hx, hy = snake.head.x, snake.head.y
+                dist_sq = (hx - fx) ** 2 + (hy - fy) ** 2
+                if dist_sq < (SEGMENT_RADIUS + FOOD_RADIUS) ** 2:
+                    snake.grow()
+                    eaten.append(food_item)
+                    break
+
+        for f in eaten:
+            food.remove(f)
+
+        # =========================
+        # COLLISION DETECTION
+        # =========================
+        dead_snakes = []
+        for s in snakes:
+            if not s.alive or s == player:
+                continue
+            # Check if player collides with this snake
+            if player.alive and player.collides_with_snake(s, skip_head=False):
+                if len(player.segments) > len(s.segments) + 2:
+                    s.die(killer=player)
+                    dead_snakes.append(s)
+                elif not player.has_shield:
+                    player.die(killer=s)
+                    game_over = True
+
+        # Check inter-snake collisions
+        for i, s1 in enumerate(snakes):
+            if not s1.alive:
+                continue
+            for s2 in snakes[i + 1:]:
+                if not s2.alive:
+                    continue
+                if s1.collides_with_snake(s2, skip_head=False):
+                    if len(s1.segments) > len(s2.segments) + 2:
+                        s2.die(killer=s1)
+                        dead_snakes.append(s2)
+                    elif len(s2.segments) > len(s1.segments) + 2:
+                        s1.die(killer=s2)
+                        dead_snakes.append(s1)
+
+        # Remove dead snakes and drop their food
+        for s in dead_snakes:
+            if s in snakes:
+                drop_food_from_snake(s, food)
                 snakes.remove(s)
-        
-        # Verificar si el jugador murió
-        if not player.alive and not game_over:
-            game_over = True
-            # Efecto de explosión al morir
-            particles.spawn(player.body[0][0], player.body[0][1], (255, 0, 0), count=30)
 
-        # Regenerar comida si es necesario
-        if len(food) < FOOD_COUNT * 0.7:
-            new_food_count = FOOD_COUNT - len(food)
-            for _ in range(new_food_count):
+        # =========================
+        # FOOD REGENERATION
+        # =========================
+        if len(food) < FOOD_COUNT:
+            for _ in range(FOOD_COUNT - len(food)):
                 food.append((
-                    random.randint(0, WORLD_SIZE),
-                    random.randint(0, WORLD_SIZE)
+                    random.randint(0, WORLD_W),
+                    random.randint(0, WORLD_H)
                 ))
 
-        # 🔶 Dibujar serpientes
-        for s in snakes:
-            s.draw(screen, camera)
+        # Prevent food list from growing too much
+        if len(food) > FOOD_COUNT * 1.5:
+            food = food[:FOOD_COUNT]
 
-        # Actualizar y dibujar partículas
+        # =========================
+        # BOT RESPAWN
+        # =========================
+        bots_alive = sum(1 for s in snakes if not s.is_human)
+        if bots_alive < BOT_COUNT_DEFAULT:
+            spawn_bots(snakes, BOT_COUNT_DEFAULT - bots_alive)
+
+        # =========================
+        # DRAW FOOD
+        # =========================
+        screen.fill(C_BG)
+
+        for f in food:
+            screen_x, screen_y = camera.apply(f)
+            screen_x = int(screen_x + WIDTH // 2)
+            screen_y = int(screen_y + HEIGHT // 2)
+            
+            # Only draw if in view
+            if -50 < screen_x < WIDTH + 50 and -50 < screen_y < HEIGHT + 50:
+                pygame.draw.circle(screen, (0, 255, 140), (screen_x, screen_y), FOOD_RADIUS)
+
+        # =========================
+        # DRAW SNAKES
+        # =========================
+        for s in snakes:
+            if s.alive:
+                s.draw(screen, camera.x, camera.y)
+
+        # =========================
+        # PARTICLES
+        # =========================
         particles.update_all()
         particles.draw_all(screen, camera)
 
-        # 🔶 Dibujar HUD
+        # =========================
+        # UI
+        # =========================
         draw_hud(screen, player)
         draw_minimap(screen, snakes, food)
 
-        # Mostrar Game Over
-        if game_over:
-            font_large = pygame.font.SysFont("arial", 72, bold=True)
-            font_small = pygame.font.SysFont("arial", 36)
-            
-            # Fondo oscuro semi-transparente
+        # =========================
+        # GAME OVER SCREEN
+        # =========================
+        if game_over and not player.alive:
+            font_big = pygame.font.SysFont("arial", 70, bold=True)
+            font_small = pygame.font.SysFont("arial", 30)
+
             overlay = pygame.Surface((WIDTH, HEIGHT))
-            overlay.set_alpha(128)
+            overlay.set_alpha(160)
             overlay.fill((0, 0, 0))
             screen.blit(overlay, (0, 0))
-            
-            # Texto GAME OVER
-            game_over_text = font_large.render("GAME OVER", True, (255, 0, 0))
-            game_over_rect = game_over_text.get_rect(center=(WIDTH//2, HEIGHT//2-50))
-            screen.blit(game_over_text, game_over_rect)
-            
-            # Estadísticas finales
-            stats_text = font_small.render(
-                f"Score: {player.score} | Masa: {int(player.max_mass)} | Kills: {player.kills}",
-                True, (255, 255, 255)
+
+            txt_go = font_big.render("GAME OVER", True, (255, 0, 0))
+            screen.blit(txt_go, (WIDTH//2 - txt_go.get_width()//2, HEIGHT//2 - 80))
+
+            stats = font_small.render(
+                f"Score: {int(player.score)} | Length: {player.length} | Kills: {player.kills}",
+                True,
+                (255, 255, 255)
             )
-            stats_rect = stats_text.get_rect(center=(WIDTH//2, HEIGHT//2+30))
-            screen.blit(stats_text, stats_rect)
-            
-            # Instrucción para reiniciar
-            restart_text = font_small.render("Presiona R para reiniciar | ESC para menú", True, (100, 255, 100))
-            restart_rect = restart_text.get_rect(center=(WIDTH//2, HEIGHT//2+100))
-            screen.blit(restart_text, restart_rect)
+            screen.blit(stats, (WIDTH//2 - stats.get_width()//2, HEIGHT//2))
+
+            restart = font_small.render(
+                "R = Restart | ESC = Exit",
+                True,
+                (100, 255, 100)
+            )
+            screen.blit(restart, (WIDTH//2 - restart.get_width()//2, HEIGHT//2 + 60))
 
         pygame.display.flip()
 
     pygame.quit()
 
-    # 🆕 Guardar score de forma segura
-    if player and player.score > 0:
+    if player.score > 0:
         try:
             save(player.name, player.score)
         except Exception as e:
-            print(f"Error al guardar ranking: {e}")
-    
+            print(f"Error saving score: {e}")
+
     return True
 
 
 if __name__ == "__main__":
-    import importlib.util
-    import os
-    
-    try:
-        # Obtener la ruta del directorio actual del script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        pantalla_path = os.path.join(script_dir, "pantalla de inicio.py")
-        
-        # Importar dinámicamente el módulo de pantalla de inicio
-        spec = importlib.util.spec_from_file_location("pantalla_inicio", pantalla_path)
-        pantalla_modulo = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(pantalla_modulo)
-        
-        # Mostrar menú y esperar respuesta
-        while True:
-            player_name = pantalla_modulo.show_menu()
-            if player_name is None:
-                # Usuario cerró la ventana
-                break
-            else:
-                # Jugador seleccionó "Play vs AI" - ejecutar versión avanzada
-                try:
-                    # Importar y ejecutar el juego avanzado
-                    spec_advanced = importlib.util.spec_from_file_location(
-                        "slither_advanced", 
-                        os.path.join(script_dir, "slither_advanced.py")
-                    )
-                    advanced_modulo = importlib.util.module_from_spec(spec_advanced)
-                    spec_advanced.loader.exec_module(advanced_modulo)
-                    
-                    # Configurar el nombre del jugador
-                    advanced_modulo.settings = advanced_modulo.GameSettings()
-                    game = advanced_modulo.GameManager(advanced_modulo.settings)
-                    game.player_snake.name = player_name
-                    
-                    # Ejecutar el juego
-                    game.run()
-                    
-                except Exception as e:
-                    print(f"Error al ejecutar el juego avanzado: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    
-                    # Fallback al juego simple si hay error
-                    run_game(player_name)
-    except Exception as e:
-        print(f"Error al cargar el menú: {e}")
-        import traceback
-        traceback.print_exc()
+    name = input("Enter your name: ").strip() or "Player"
+    run_game(name)

@@ -1,444 +1,256 @@
-"""
-Módulo de la serpiente (jugadores y bots).
-"""
-
-import math
-import random
 import pygame
-
-from constants import (
-    WORLD_SIZE as WORLD_W, WORLD_SIZE as WORLD_H, SEGMENT_RADIUS, SEGMENT_GAP,
-    INITIAL_LENGTH, SPEED_BASE, SPEED_BOOST, BOOST_DRAIN,
-    GROW_PER_FOOD, TURN_SPEED,
-    PU_SPEED, PU_GHOST, PU_MAGNET, PU_SHIELD, PU_DOUBLE,
-    POWERUP_DURATION, AI_REACTION_TIME, WIDTH, HEIGHT
-)
-
-
-class Segment:
-    __slots__ = ("x", "y")
-
-    def __init__(self, x: float, y: float):
-        self.x = x
-        self.y = y
-
-
-class Snake:
-    def __init__(self, color_info: dict, snake_id: int, x=None, y=None):
-        self.id = snake_id
-        self.color_info = color_info
-        self.body_color = color_info["body"]
-        self.head_color = color_info["head"]
-        self.glow_color  = color_info.get("glow", (*color_info["body"][:3], 60))
-        self.name = color_info["name"]
-
-        cx = x if x is not None else random.randint(300, WORLD_W - 300)
-        cy = y if y is not None else random.randint(300, WORLD_H - 300)
-        self.angle = random.uniform(0, 2 * math.pi)
-
-        self.segments: list[Segment] = []
-        for i in range(INITIAL_LENGTH):
-            sx = cx - i * SEGMENT_GAP * math.cos(self.angle)
-            sy = cy - i * SEGMENT_GAP * math.sin(self.angle)
-            self.segments.append(Segment(sx, sy))
-
-        self.target_length = INITIAL_LENGTH
-        self.alive = True
-        self.boosting = False
-
-        self.score = 0
-        self.kills = 0
-        self.foods_eaten = 0
-
-        self.powerups: dict[str, float] = {}
-
-        self.death_timer = 0.0
-
-        self.killed_by: "Snake | None" = None
-
-        self.lifetime = 0.0
-
-        self._boost_particle_timer = 0.0
-
-    @property
-    def head(self) -> Segment:
-        return self.segments[0]
-
-    @property
-    def length(self) -> int:
-        return len(self.segments)
-
-    @property
-    def speed(self) -> float:
-        base = SPEED_BOOST if self.boosting else SPEED_BASE
-        if PU_SPEED in self.powerups:
-            base *= 1.5
-        return base
-
-    @property
-    def has_ghost(self) -> bool:
-        return PU_GHOST in self.powerups
-
-    @property
-    def has_shield(self) -> bool:
-        return PU_SHIELD in self.powerups
-
-    @property
-    def double_score(self) -> bool:
-        return PU_DOUBLE in self.powerups
-
-    @property
-    def has_magnet(self) -> bool:
-        return PU_MAGNET in self.powerups
-
-    def update(self, dt: float):
-        if not self.alive:
-            return
-
-        self.lifetime += dt
-
-        spd = self.speed
-        new_x = self.head.x + spd * dt * math.cos(self.angle)
-        new_y = self.head.y + spd * dt * math.sin(self.angle)
-
-        new_x = new_x % WORLD_W
-        new_y = new_y % WORLD_H
-
-        self.segments.insert(0, Segment(new_x, new_y))
-
-        while len(self.segments) > self.target_length:
-            self.segments.pop()
-
-        if self.boosting and self.target_length > INITIAL_LENGTH + 3:
-            self.target_length -= BOOST_DRAIN * dt
-
-        expired = [k for k, v in self.powerups.items() if v <= 0]
-        for k in expired:
-            del self.powerups[k]
-        for k in list(self.powerups):
-            self.powerups[k] -= dt
-
-    def collides_with_snake(self, other: "Snake", skip_head: bool = True) -> bool:
-        """¿La cabeza de self choca con el cuerpo de other?"""
-        if self.has_ghost:
-            return False
-        start = 1 if (other is self or skip_head) else 0
-        hx, hy = self.head.x, self.head.y
-        for seg in other.segments[start:]:
-            dx = hx - seg.x
-            dy = hy - seg.y
-            if dx * dx + dy * dy < (SEGMENT_RADIUS * 2) ** 2:
-                return True
-        return False
-    
-    def draw(self, surface: pygame.Surface, camera_x: float, camera_y: float,
-             alpha_override: int = 255):
-        if not self.segments:
-            return
-
-        n = len(self.segments)
-        body_c = self.body_color
-        head_c = self.head_color
-        glow_c = self.glow_color
-
-        ghost_alpha = 120 if self.has_ghost else alpha_override
-
-        for i in range(n - 1, -1, -1):
-            seg = self.segments[i]
-            sx = int(seg.x - camera_x)
-            sy = int(seg.y - camera_y)
-
-            t = 1 - (i / n) * 0.3
-            r = max(4, int(SEGMENT_RADIUS * t))
-
-            if i == 0:
-                color = head_c
-            else:
-                ratio = i / max(1, n - 1)
-                color = (
-                    int(head_c[0] * (1 - ratio) + body_c[0] * ratio),
-                    int(head_c[1] * (1 - ratio) + body_c[1] * ratio),
-                    int(head_c[2] * (1 - ratio) + body_c[2] * ratio),
-                )
-
-            if i == 0 or i % 4 == 0:
-                glow_surf = pygame.Surface((r * 4, r * 4), pygame.SRCALPHA)
-                ga = int(glow_c[3] * (ghost_alpha / 255))
-                pygame.draw.circle(glow_surf, (*glow_c[:3], ga), (r * 2, r * 2), r * 2)
-                surface.blit(glow_surf, (sx - r * 2, sy - r * 2))
-
-            if ghost_alpha < 255:
-                seg_surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
-                pygame.draw.circle(seg_surf, (*color, ghost_alpha), (r + 1, r + 1), r)
-                surface.blit(seg_surf, (sx - r - 1, sy - r - 1))
-            else:
-                pygame.draw.circle(surface, color, (sx, sy), r)
-                pygame.draw.circle(surface, (
-                    min(255, color[0] + 60),
-                    min(255, color[1] + 60),
-                    min(255, color[2] + 60)
-                ), (sx - r // 3, sy - r // 3), max(2, r // 3))
-        self._draw_eyes(surface, camera_x, camera_y)
-
-        if self.has_shield:
-            hx = int(self.head.x - camera_x)
-            hy = int(self.head.y - camera_y)
-            shield_surf = pygame.Surface((SEGMENT_RADIUS * 5, SEGMENT_RADIUS * 5), pygame.SRCALPHA)
-            pygame.draw.circle(shield_surf, (80, 220, 255, 80),
-                               (SEGMENT_RADIUS * 2 + 2, SEGMENT_RADIUS * 2 + 2),
-                               SEGMENT_RADIUS * 2 + 2)
-            surface.blit(shield_surf,
-                         (hx - SEGMENT_RADIUS * 2 - 2, hy - SEGMENT_RADIUS * 2 - 2))
-
-    def _draw_eyes(self, surface, cam_x, cam_y):
-        hx = int(self.head.x - cam_x)
-        hy = int(self.head.y - cam_y)
-        r = SEGMENT_RADIUS
-
-        eye_offset = r * 0.6
-        perp = self.angle + math.pi / 2
-        ex1 = hx + eye_offset * math.cos(perp)
-        ey1 = hy + eye_offset * math.sin(perp)
-        ex2 = hx - eye_offset * math.cos(perp)
-        ey2 = hy - eye_offset * math.sin(perp)
-
-        eye_r = max(2, r // 3)
-        pygame.draw.circle(surface, (255, 255, 255), (int(ex1), int(ey1)), eye_r)
-        pygame.draw.circle(surface, (255, 255, 255), (int(ex2), int(ey2)), eye_r)
-        # Pupila
-        pupil_r = max(1, eye_r // 2)
-        px = math.cos(self.angle) * pupil_r * 0.5
-        py = math.sin(self.angle) * pupil_r * 0.5
-        pygame.draw.circle(surface, (10, 10, 20),
-                           (int(ex1 + px), int(ey1 + py)), pupil_r)
-        pygame.draw.circle(surface, (10, 10, 20),
-                           (int(ex2 + px), int(ey2 + py)), pupil_r)
-
-    def draw_name(self, surface: pygame.Surface, camera_x: float, camera_y: float,
-                  font: pygame.font.Font):
-        if not self.alive:
-            return
-        hx = int(self.head.x - camera_x)
-        hy = int(self.head.y - camera_y)
-        label = font.render(self.name, True, (255, 255, 255))
-        rect = label.get_rect(center=(hx, hy - SEGMENT_RADIUS * 2 - 4))
-        surface.blit(label, rect)
-
-    def get_food_drops(self) -> list[tuple[float, float]]:
-        """Devuelve posiciones donde soltar comida al morir."""
-        drops = []
-        step = max(1, len(self.segments) // 20)
-        for i, seg in enumerate(self.segments[::step]):
-            drops.append((seg.x, seg.y))
-        return drops
-
-    def grow(self):
-        """Aumenta el tamaño de la serpiente cuando come."""
-        self.target_length += GROW_PER_FOOD
-        self.foods_eaten += 1
-        self.score += 10 * (2 if self.double_score else 1)
-
-    def die(self, killer: "Snake | None" = None):
-        """Marca la serpiente como muerta."""
-        self.alive = False
-        self.killed_by = killer
-        if killer:
-            killer.kills += 1
-            killer.score += int(self.score * 0.5)
-
-
-class PlayerSnake(Snake):
-    def __init__(self, color_info, snake_id, keys: dict, x=None, y=None):
-        super().__init__(color_info, snake_id, x, y)
-        self.keys = keys
-        self.is_human = True
-
-    def handle_input(self, pressed):
-        """Ajusta el ángulo según teclas presionadas."""
-        turning = False
-        if pressed[self.keys["left"]]:
-            self.angle -= TURN_SPEED * (1 / 60)
-            turning = True
-        if pressed[self.keys["right"]]:
-            self.angle += TURN_SPEED * (1 / 60)
-            turning = True
-        self.boosting = pressed[self.keys["boost"]]
-
-    def handle_input_dt(self, pressed, dt: float):
-        """Handle player input with delta time (deprecated - use handle_input_keys)"""
-        pass
-    
-    def handle_input_keys(self, keys_held: set, dt: float):
-        """Handle player input using key events (deprecated - use handle_mouse_input)"""
-        pass
-    
-    def handle_mouse_input(self, mouse_pos: tuple, camera_x: float, camera_y: float, camera_zoom: float):
-        """
-        Handle player input following the mouse position (Slither.io style)
-        
-        Args:
-            mouse_pos: (x, y) position of mouse on screen in absolute coordinates
-            camera_x: camera world x position
-            camera_y: camera world y position
-            camera_zoom: camera zoom level
-        """
-        # Convert absolute screen position to relative-to-center coordinates
-        # mouse_pos is (0 to WIDTH, 0 to HEIGHT), convert to (-WIDTH/2 to WIDTH/2, -HEIGHT/2 to HEIGHT/2)
-        rel_screen_x = mouse_pos[0] - WIDTH // 2
-        rel_screen_y = mouse_pos[1] - HEIGHT // 2
-        
-        # Convert relative screen coordinates to world coordinates
-        # Inverse of camera.apply(): world = screen / zoom + camera_pos
-        world_x = (rel_screen_x / camera_zoom) + camera_x
-        world_y = (rel_screen_y / camera_zoom) + camera_y
-        
-        # Calculate direction from head to mouse
-        dx = world_x - self.head.x
-        dy = world_y - self.head.y
-        
-        # Update angle to point toward mouse
-        # Only update if mouse is not at head position
-        distance_sq = dx * dx + dy * dy
-        if distance_sq > 1.0:  # More than 1 pixel away
-            self.angle = math.atan2(dy, dx)
-
-class BotSnake(Snake):
-    """IA con tres comportamientos: buscar comida, evitar peligros, perseguir."""
-
-    BEHAVIOR_WANDER  = "wander"
-    BEHAVIOR_HUNT    = "hunt"
-    BEHAVIOR_FLEE    = "flee"
-
-    def __init__(self, color_info, snake_id, difficulty: float = 1.0, x=None, y=None):
-        super().__init__(color_info, snake_id, x, y)
-        self.is_human = False
-        self.difficulty = difficulty
-
-        self._react_timer = 0.0
-        self._target_angle = self.angle
-        self._behavior = self.BEHAVIOR_WANDER
-        self._wander_target: tuple[float, float] | None = None
-        self._wander_timer = 0.0
-
-    def ai_update(self, dt: float, food_list: list, snakes: list["Snake"],
-                  powerups: list):
-        """Toma decisiones de IA y actualiza el ángulo."""
-        self._react_timer -= dt
-        self._wander_timer -= dt
-
-        if self._react_timer > 0:
-            self._smooth_turn(dt)
-            self.update(dt)
-            return
-
-        self._react_timer = AI_REACTION_TIME / self.difficulty
-
-        hx, hy = self.head.x, self.head.y
-
-        danger_angle = self._find_danger(snakes)
-        if danger_angle is not None:
-            self._behavior = self.BEHAVIOR_FLEE
-            flee_angle = danger_angle + math.pi + random.uniform(-0.4, 0.4)
-            self._target_angle = flee_angle
-            self.boosting = True
-            self._smooth_turn(dt)
-            self.update(dt)
-            return
-
-        self.boosting = False
-
-        pu_target = self._find_nearest_powerup(powerups)
-        if pu_target:
-            self._behavior = self.BEHAVIOR_HUNT
-            self._target_angle = math.atan2(pu_target[1] - hy, pu_target[0] - hx)
-            self._smooth_turn(dt)
-            self.update(dt)
-            return
-
-        food_target = self._find_nearest_food(food_list)
-        if food_target:
-            self._behavior = self.BEHAVIOR_WANDER
-            self._target_angle = math.atan2(food_target[1] - hy, food_target[0] - hx)
-            self._smooth_turn(dt)
-            self.update(dt)
-            return
-
-        if self._wander_target is None or self._wander_timer <= 0:
-            self._wander_target = (
-                random.uniform(200, WORLD_W - 200),
-                random.uniform(200, WORLD_H - 200),
-            )
-            self._wander_timer = random.uniform(3, 8)
-        tx, ty = self._wander_target
-        self._target_angle = math.atan2(ty - hy, tx - hx)
-        self._smooth_turn(dt)
-        self.update(dt)
-
-    def _smooth_turn(self, dt: float):
-        """Gira gradualmente hacia _target_angle."""
-        diff = (self._target_angle - self.angle + math.pi) % (2 * math.pi) - math.pi
-        max_turn = TURN_SPEED * dt * self.difficulty
-        if abs(diff) < max_turn:
-            self.angle = self._target_angle
-        else:
-            self.angle += max_turn * (1 if diff > 0 else -1)
-
-    def _find_danger(self, snakes: list) -> float | None:
-        """Devuelve el ángulo hacia el peligro si existe uno cercano."""
-        AI_DANGER_RADIUS = 500  # Default if not in settings
-        hx, hy = self.head.x, self.head.y
-        closest_dist = AI_DANGER_RADIUS * AI_DANGER_RADIUS
-
-        for snake in snakes:
-            if snake is self or not snake.alive:
+import random
+import sys
+import os
+import math
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from constants import *
+from snake import PlayerSnake, BotSnake
+from food import generate
+from camera import Camera
+from ui import draw_hud, draw_minimap
+from ranking import save
+import particles
+
+
+# =========================
+# 🧠 SPAWN BOTS
+# =========================
+def spawn_bots(snakes, count=1):
+    bot_ids = [s.id for s in snakes if not s.is_human]
+    next_id = max(bot_ids) + 1 if bot_ids else 100
+
+    for i in range(count):
+        color_info = BOT_COLORS[(next_id + i) % len(BOT_COLORS)]
+        bot = BotSnake(
+            color_info,
+            next_id + i,
+            difficulty=1.0,
+            x=random.randint(300, WORLD_W - 300),
+            y=random.randint(300, WORLD_H - 300)
+        )
+        snakes.append(bot)
+
+
+# =========================
+# 💥 DROP FOOD
+# =========================
+def drop_food_from_snake(snake, food_list):
+    for drop_pos in snake.get_food_drops():
+        food_list.append(drop_pos)
+
+
+# =========================
+# 🎮 GAME
+# =========================
+def run_game(player_name):
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Slither.io PRO")
+    clock = pygame.time.Clock()
+
+    particles.particles = []
+    camera = Camera()
+    food = generate()
+
+    player_color = PLAYER_COLORS[0]
+    player = PlayerSnake(player_color, 0, PLAYER_KEYS[0], x=WORLD_W//2, y=WORLD_H//2)
+    snakes = [player]
+
+    spawn_bots(snakes, BOT_COUNT_DEFAULT)
+
+    running = True
+    game_over = False
+
+    # =========================
+    # 🔥 IMPORTANTE: smooth target init
+    # =========================
+    player.smooth_target = (WORLD_W//2, WORLD_H//2)
+
+    while running:
+        dt = clock.tick(FPS) / 1000.0
+        if dt > 0.05:
+            dt = 0.05
+
+        # =========================
+        # INPUT
+        # =========================
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                running = False
+
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    return False
+
+                if e.key == pygame.K_r and game_over:
+                    pygame.quit()
+                    return run_game(player_name)
+
+        # =========================
+        # CAMERA
+        # =========================
+        if player.alive and player.segments:
+            mass = len(player.segments) * SEGMENT_RADIUS
+            target_zoom = max(0.3, min(1.5, 50 / (mass / 10 + 1)))
+
+            camera.zoom += (target_zoom - camera.zoom) * 0.08
+            camera.update((player.head.x, player.head.y), mass)
+
+        # =========================
+        # PLAYER INPUT (🔥 MEJORADO)
+        # =========================
+        if player.alive:
+            mouse_pos = pygame.mouse.get_pos()
+
+            # 🎯 MOVIMIENTO TIPO SLITHER.IO REAL
+            head_x = player.head.x
+            head_y = player.head.y
+
+            target_x = mouse_pos[0] / camera.zoom + camera.x
+            target_y = mouse_pos[1] / camera.zoom + camera.y
+
+            sx, sy = player.smooth_target
+
+            sx += (target_x - sx) * 0.25
+            sy += (target_y - sy) * 0.25
+
+            player.smooth_target = (sx, sy)
+
+            dx = sx - head_x
+            dy = sy - head_y
+
+            dist = math.hypot(dx, dy)
+            if dist != 0:
+                dx /= dist
+                dy /= dist
+
+            speed = player.boost_speed if player.boosting else player.speed
+
+            player.head.x += dx * speed
+            player.head.y += dy * speed
+
+            player.boosting = pygame.key.get_pressed()[pygame.K_SPACE] or pygame.key.get_pressed()[pygame.K_LSHIFT]
+
+        # =========================
+        # UPDATE SNAKES
+        # =========================
+        for s in snakes:
+            if s.alive:
+                if s.is_human:
+                    s.update(dt)
+                else:
+                    s.ai_update(dt, food, snakes, [])
+
+        # =========================
+        # FOOD
+        # =========================
+        eaten = []
+        for food_item in food:
+            fx, fy = food_item
+            for snake in snakes:
+                if not snake.alive:
+                    continue
+                hx, hy = snake.head.x, snake.head.y
+
+                if (hx - fx) ** 2 + (hy - fy) ** 2 < (SEGMENT_RADIUS + FOOD_RADIUS) ** 2:
+                    snake.grow()
+                    eaten.append(food_item)
+                    break
+
+        for f in eaten:
+            food.remove(f)
+
+        if len(food) < FOOD_COUNT:
+            for _ in range(FOOD_COUNT - len(food)):
+                food.append((
+                    random.randint(0, WORLD_W),
+                    random.randint(0, WORLD_H)
+                ))
+
+        # =========================
+        # COLLISIONS
+        # =========================
+        dead_snakes = []
+        for s in snakes:
+            if not s.alive or s == player:
                 continue
-            if snake.length > self.length * 0.8:
-                dx = snake.head.x - hx
-                dy = snake.head.y - hy
-                d2 = dx * dx + dy * dy
-                if d2 < closest_dist:
-                    closest_dist = d2
-                    return math.atan2(dy, dx)
-            for seg in snake.segments[5:]:
-                dx = seg.x - hx
-                dy = seg.y - hy
-                d2 = dx * dx + dy * dy
-                if d2 < (AI_DANGER_RADIUS * 0.6) ** 2:
-                    return math.atan2(dy, dx)
-        return None
 
-    def _find_nearest_food(self, food_list) -> tuple[float, float] | None:
-        AI_SIGHT_RADIUS = 600  # Default if not in settings
-        hx, hy = self.head.x, self.head.y
-        best = None
-        best_d2 = AI_SIGHT_RADIUS ** 2
-        for f in food_list:
-            fx, fy = f[0], f[1]  # Handle tuples (x, y)
-            dx = fx - hx
-            dy = fy - hy
-            d2 = dx * dx + dy * dy
-            if d2 < best_d2:
-                best_d2 = d2
-                best = (fx, fy)
-        return best
+            if player.alive and player.collides_with_snake(s, skip_head=False):
+                if len(player.segments) > len(s.segments) + 2:
+                    s.die(killer=player)
+                    dead_snakes.append(s)
+                else:
+                    player.die(killer=s)
+                    game_over = True
 
-    def _find_nearest_powerup(self, powerups) -> tuple[float, float] | None:
-        if not powerups:  # If powerups list is empty
-            return None
-        AI_SIGHT_RADIUS = 600  # Default if not in settings
-        hx, hy = self.head.x, self.head.y
-        best = None
-        best_d2 = (AI_SIGHT_RADIUS * 0.8) ** 2
-        for pu in powerups:
-            # Handle tuples (x, y) or objects with x, y attributes
-            if isinstance(pu, tuple):
-                px, py = pu[0], pu[1]
-            else:
-                px, py = pu.x, pu.y
-            dx = px - hx
-            dy = py - hy
-            d2 = dx * dx + dy * dy
-            if d2 < best_d2:
-                best_d2 = d2
-                best = (px, py)
-        return best
+        for i, s1 in enumerate(snakes):
+            if not s1.alive:
+                continue
+            for s2 in snakes[i + 1:]:
+                if not s2.alive:
+                    continue
+                if s1.collides_with_snake(s2, skip_head=False):
+                    if len(s1.segments) > len(s2.segments) + 2:
+                        s2.die(killer=s1)
+                        dead_snakes.append(s2)
+                    else:
+                        s1.die(killer=s2)
+                        dead_snakes.append(s1)
+
+        for s in dead_snakes:
+            if s in snakes:
+                drop_food_from_snake(s, food)
+                snakes.remove(s)
+
+        # =========================
+        # BOT RESPAWN
+        # =========================
+        if sum(1 for s in snakes if not s.is_human) < BOT_COUNT_DEFAULT:
+            spawn_bots(snakes, 1)
+
+        # =========================
+        # DRAW
+        # =========================
+        screen.fill(C_BG)
+
+        for f in food:
+            x, y = camera.apply(f)
+            x = int(x + WIDTH // 2)
+            y = int(y + HEIGHT // 2)
+            pygame.draw.circle(screen, (0, 255, 140), (x, y), FOOD_RADIUS)
+
+        for s in snakes:
+            if s.alive:
+                s.draw(screen, camera.x, camera.y)
+
+        particles.update_all()
+        particles.draw_all(screen, camera)
+
+        draw_hud(screen, player)
+        draw_minimap(screen, snakes, food)
+
+        if game_over and not player.alive:
+            font = pygame.font.SysFont("arial", 60, bold=True)
+            txt = font.render("GAME OVER", True, (255, 0, 0))
+            screen.blit(txt, (WIDTH//2 - txt.get_width()//2, HEIGHT//2))
+
+        pygame.display.flip()
+
+    pygame.quit()
+
+    if player.score > 0:
+        try:
+            save(player.name, player.score)
+        except:
+            pass
+
+    return True
+
+
+if __name__ == "__main__":
+    name = input("Enter your name: ").strip() or "Player"
+    run_game(name)

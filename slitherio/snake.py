@@ -62,6 +62,7 @@ class Snake:
         self.max_mass = len(self.segments)
         self.boost_energy = 100
         self.max_boost_energy = 100
+        self.boost_depleted = False  # True cuando se agotó, hasta recargar al 50%
 
         self._boost_particle_timer = 0.0
         self.is_human = False
@@ -122,12 +123,26 @@ class Snake:
             self.segments.pop()
 
         # 🔥 BOOST CON ENERGÍA (tipo Slither)
-        if self.boosting and self.boost_energy > 0:
-            self.boost_energy -= 60 * dt   # subo consumo para que se note
-            if self.boost_energy < 0:
+        # Si se agotó, bloquear hasta recargar al 50%
+        if self.boost_energy <= 0:
+            self.boost_depleted = True
+            self.boosting = False
+
+        if self.boost_depleted:
+            self.boosting = False
+            self.boost_energy += 15 * dt
+            if self.boost_energy >= self.max_boost_energy * 0.5:
+                self.boost_depleted = False  # ya puede volver a usar boost
+            if self.boost_energy > self.max_boost_energy:
+                self.boost_energy = self.max_boost_energy
+        elif self.boosting:
+            self.boost_energy -= 20 * dt
+            if self.boost_energy <= 0:
                 self.boost_energy = 0
+                self.boosting = False
+                self.boost_depleted = True
         else:
-            self.boost_energy += 30 * dt   # recarga más lenta
+            self.boost_energy += 15 * dt
             if self.boost_energy > self.max_boost_energy:
                 self.boost_energy = self.max_boost_energy
 
@@ -380,23 +395,39 @@ class BotSnake(Snake):
             self._smooth_turn(dt)
             super().update(dt)
             return
-        
 
         self._react_timer = AI_REACTION_TIME / max(0.5, self.difficulty)
 
         hx, hy = self.head.x, self.head.y
 
+        # 1) HUIR si hay peligro real (solo serpientes BASTANTE más grandes)
         danger_angle = self._find_danger(snakes)
         if danger_angle is not None:
             self._behavior = self.BEHAVIOR_FLEE
-            self._target_angle = danger_angle + math.pi + random.uniform(-0.4, 0.4)
-            self.boosting = True
+            self._target_angle = danger_angle + math.pi + random.uniform(-0.3, 0.3)
+            if not self.boost_depleted:
+                self.boosting = True
             self._smooth_turn(dt)
             super().update(dt)
             return
 
         self.boosting = False
 
+        # 2) CAZAR serpiente más pequeña cercana
+        hunt_target = self._find_hunt_target(snakes)
+        if hunt_target is not None:
+            tx, ty = hunt_target
+            self._behavior = self.BEHAVIOR_HUNT
+            self._target_angle = math.atan2(ty - hy, tx - hx)
+            # boost al cazar si tiene energía
+            dist = math.hypot(tx - hx, ty - hy)
+            if dist < AI_SIGHT_RADIUS * 0.6 and not self.boost_depleted and self.boost_energy > 30:
+                self.boosting = True
+            self._smooth_turn(dt)
+            super().update(dt)
+            return
+
+        # 3) Power-ups
         pu_target = self._find_nearest_powerup(powerups)
         if pu_target:
             self._behavior = self.BEHAVIOR_HUNT
@@ -405,6 +436,7 @@ class BotSnake(Snake):
             super().update(dt)
             return
 
+        # 4) Comer comida
         food_target = self._find_nearest_food(food_list)
         if food_target:
             self._behavior = self.BEHAVIOR_WANDER
@@ -413,6 +445,7 @@ class BotSnake(Snake):
             super().update(dt)
             return
 
+        # 5) Wandear
         if self._wander_target is None or self._wander_timer <= 0:
             self._wander_target = (
                 random.uniform(200, WORLD_W - 200),
@@ -441,23 +474,52 @@ class BotSnake(Snake):
             if snake is self or not snake.alive:
                 continue
 
-            # serpientes más grandes cerca => peligro
-            if snake.length > self.length * 0.8:
+            # Solo huir de serpientes BASTANTE más grandes (50% más)
+            if snake.length > self.length * 1.5:
                 dx = snake.head.x - hx
                 dy = snake.head.y - hy
                 d2 = dx * dx + dy * dy
                 if d2 < AI_DANGER_RADIUS * AI_DANGER_RADIUS:
                     return math.atan2(dy, dx)
 
-            # cuerpo cercano => peligro
-            for seg in snake.segments[5:]:
-                dx = seg.x - hx
-                dy = seg.y - hy
-                d2 = dx * dx + dy * dy
-                if d2 < (AI_DANGER_RADIUS * 0.6) ** 2:
-                    return math.atan2(dy, dx)
+            # Cuerpo muy cercano de serpiente más grande => peligro
+            if snake.length > self.length:
+                for seg in snake.segments[3:]:
+                    dx = seg.x - hx
+                    dy = seg.y - hy
+                    d2 = dx * dx + dy * dy
+                    if d2 < (AI_DANGER_RADIUS * 0.4) ** 2:
+                        return math.atan2(dy, dx)
 
         return None
+
+    def _find_hunt_target(self, snakes: list) -> tuple[float, float] | None:
+        """Busca la serpiente más pequeña cercana para cazar."""
+        hx, hy = self.head.x, self.head.y
+        best = None
+        best_score = -1
+
+        for snake in snakes:
+            if snake is self or not snake.alive:
+                continue
+            # Solo cazar serpientes más chicas
+            if snake.length >= self.length * 0.9:
+                continue
+
+            dx = snake.head.x - hx
+            dy = snake.head.y - hy
+            d2 = dx * dx + dy * dy
+
+            if d2 > AI_SIGHT_RADIUS ** 2:
+                continue
+
+            # Priorizar: cerca y pequeña
+            score = (1 / max(1, d2)) * 1e8 + (self.length - snake.length)
+            if score > best_score:
+                best_score = score
+                best = (snake.head.x, snake.head.y)
+
+        return best
 
     @staticmethod
     def _pos_of(obj):

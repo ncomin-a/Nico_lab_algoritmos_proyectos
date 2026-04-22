@@ -79,10 +79,19 @@ def draw_hud(screen, player):
     pygame.draw.rect(screen, (60, 60, 60), 
                      (boost_x, boost_y, boost_width, boost_height), 1)
 
-    # Barra de boost (proporcional a la longitud)
-    boost_fill = int(boost_width * min(1.0, player.length / 50))
-    pygame.draw.rect(screen, (255, 200, 0),
+    # Barra de boost (proporcional a la energía real)
+    boost_fill = int(boost_width * (player.boost_energy / player.max_boost_energy))
+    if getattr(player, "boost_depleted", False):
+        boost_color = (180, 60, 60)  # rojo oscuro = bloqueado
+    elif player.boost_energy < player.max_boost_energy * 0.5:
+        boost_color = (255, 80, 80)  # rojo = bajo
+    else:
+        boost_color = (255, 200, 0)  # amarillo = disponible
+    pygame.draw.rect(screen, boost_color,
                      (boost_x, boost_y, boost_fill, boost_height))
+    # Línea indicando el umbral del 50%
+    mid_x = boost_x + boost_width // 2
+    pygame.draw.line(screen, (255, 255, 255), (mid_x, boost_y), (mid_x, boost_y + boost_height), 1)
 
     draw_text(screen, "Boost", font_small, (200, 200, 200),
               boost_x, boost_y - 20)
@@ -164,57 +173,92 @@ def draw_minimap(screen, snakes, food):
               pos_x + size // 2, pos_y - 20, center=True)
 
 
-def draw_ranking(screen, snakes, max_show=5):
-    """
-    🆕 Muestra ranking en tiempo real de serpientes vivas
-    
-    Args:
-        screen: superficie de pygame
-        snakes: lista de serpientes
-        max_show: número máximo de serpientes a mostrar
-    """
-    # Ordenar por score
-    sorted_snakes = sorted(snakes, key=lambda s: s.score, reverse=True)[:max_show]
-    
-    if not sorted_snakes:
+def draw_ranking(screen, snakes, player=None, max_show=10):
+    """Ranking estilo slither.io en la esquina superior derecha."""
+    alive = [s for s in snakes if s.alive]
+    if not alive:
         return
 
-    font_medium = get_font(20, bold=True)
-    font_small = get_font(16)
+    sorted_snakes = sorted(alive, key=lambda s: s.length, reverse=True)
+    player_rank = next((i+1 for i, s in enumerate(sorted_snakes) if s is player), None)
 
-    # Posición (parte superior derecha)
-    rank_x = WIDTH - 250
-    rank_y = 15
-    rank_width = 230
-    rank_height = 30 + len(sorted_snakes) * 30
+    # Mostrar top N, pero siempre incluir al jugador si está fuera del top
+    top = sorted_snakes[:max_show]
+    show_player_sep = player is not None and player_rank is not None and player_rank > max_show
 
-    # 🆕 Panel de ranking
-    rank_surf = pygame.Surface((rank_width, rank_height))
-    rank_surf.set_alpha(200)
-    rank_surf.fill((30, 20, 20))
-    screen.blit(rank_surf, (rank_x, rank_y))
+    ROW_H = 28
+    PANEL_W = 220
+    rows = len(top) + (2 if show_player_sep else 0)  # +2 por separador y fila del jugador
+    PANEL_H = 36 + rows * ROW_H + 8
 
-    # 🆕 Borde
-    pygame.draw.rect(screen, (255, 100, 100),
-                     (rank_x, rank_y, rank_width, rank_height), 2)
+    rank_x = WIDTH - PANEL_W - 12
+    rank_y = 12
+
+    # Fondo semi-transparente
+    bg = pygame.Surface((PANEL_W, PANEL_H), pygame.SRCALPHA)
+    bg.fill((10, 10, 20, 190))
+    screen.blit(bg, (rank_x, rank_y))
+    pygame.draw.rect(screen, (60, 60, 100), (rank_x, rank_y, PANEL_W, PANEL_H), 1)
+
+    font_title = get_font(15, bold=True)
+    font_row   = get_font(14, bold=False)
+    font_bold  = get_font(14, bold=True)
 
     # Título
-    draw_text(screen, "🏆 RANKING", font_medium, (255, 200, 0),
-              rank_x + rank_width // 2, rank_y + 5, center=True)
+    draw_text(screen, "RANKING", font_title, (200, 200, 255),
+              rank_x + PANEL_W // 2, rank_y + 8, center=True)
 
-    # Mostrar jugadores
-    for i, snake in enumerate(sorted_snakes):
-        y = rank_y + 35 + (i * 30)
-        
+    # Línea separadora bajo el título
+    pygame.draw.line(screen, (60, 60, 100),
+                     (rank_x + 8, rank_y + 28), (rank_x + PANEL_W - 8, rank_y + 28))
+
+    for i, snake in enumerate(top):
+        row_y = rank_y + 36 + i * ROW_H
+        is_player = snake is player
+
+        # Resaltar fila del jugador
+        if is_player:
+            hi = pygame.Surface((PANEL_W - 2, ROW_H), pygame.SRCALPHA)
+            hi.fill((255, 200, 0, 40))
+            screen.blit(hi, (rank_x + 1, row_y))
+
         # Número de posición
-        pos_text = f"{i+1}. {snake.name[:12]}"
-        draw_text(screen, pos_text, font_small, snake.body_color,
-                  rank_x + 10, y)
-        
-        # Score
-        score_text = f"{snake.score}"
-        draw_text(screen, score_text, font_small, (255, 255, 100),
-                  rank_x + 160, y, center=False)
+        num_color = (255, 200, 0) if i == 0 else (200, 200, 200) if i < 3 else (130, 130, 150)
+        draw_text(screen, f"{i+1}", font_bold if i < 3 else font_row, num_color,
+                  rank_x + 10, row_y + 6)
+
+        # Punto de color de la serpiente
+        pygame.draw.circle(screen, snake.body_color[:3],
+                           (rank_x + 32, row_y + ROW_H // 2), 5)
+
+        # Nombre (truncado)
+        name = snake.name[:13]
+        name_color = (255, 230, 80) if is_player else (220, 220, 220)
+        draw_text(screen, name, font_bold if is_player else font_row, name_color,
+                  rank_x + 42, row_y + 6)
+
+        # Longitud (alineada a la derecha)
+        len_text = str(snake.length)
+        draw_text(screen, len_text, font_row, (100, 220, 255),
+                  rank_x + PANEL_W - 10 - get_font(14).size(len_text)[0], row_y + 6)
+
+    # Si el jugador está fuera del top, mostrar separador + su posición
+    if show_player_sep and player is not None:
+        sep_y = rank_y + 36 + max_show * ROW_H
+        draw_text(screen, "· · ·", font_row, (100, 100, 130),
+                  rank_x + PANEL_W // 2, sep_y, center=True)
+
+        row_y = sep_y + ROW_H - 4
+        hi = pygame.Surface((PANEL_W - 2, ROW_H), pygame.SRCALPHA)
+        hi.fill((255, 200, 0, 40))
+        screen.blit(hi, (rank_x + 1, row_y))
+
+        draw_text(screen, f"{player_rank}", font_bold, (255, 200, 0), rank_x + 10, row_y + 6)
+        pygame.draw.circle(screen, player.body_color[:3], (rank_x + 32, row_y + ROW_H // 2), 5)
+        draw_text(screen, player.name[:13], font_bold, (255, 230, 80), rank_x + 42, row_y + 6)
+        len_text = str(player.length)
+        draw_text(screen, len_text, font_row, (100, 220, 255),
+                  rank_x + PANEL_W - 10 - get_font(14).size(len_text)[0], row_y + 6)
 
 
 def draw_game_over(screen, player, snakes):

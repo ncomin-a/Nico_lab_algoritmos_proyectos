@@ -11,7 +11,7 @@ from constants import *
 from snake import PlayerSnake, BotSnake
 from food import generate
 from camera import Camera
-from ui import draw_hud, draw_minimap
+from ui import draw_hud, draw_minimap, draw_ranking
 from ranking import save
 import particles
 
@@ -135,7 +135,7 @@ def run_game(player_name):
 
             keys_held = pygame.key.get_pressed()
             mouse_buttons = pygame.mouse.get_pressed()
-            player.boosting = mouse_buttons[0] and player.boost_energy > 0
+            player.boosting = mouse_buttons[0] and not player.boost_depleted and player.boost_energy > 0
         # =========================
         # UPDATE SNAKES
         # =========================
@@ -241,6 +241,7 @@ def run_game(player_name):
 
         draw_hud(screen, player)
         draw_minimap(screen, snakes, food)
+        draw_ranking(screen, snakes, player=player)
 
         if game_over and not player.alive:
             font_big = pygame.font.SysFont("arial", 70, bold=True)

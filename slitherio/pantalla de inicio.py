@@ -149,7 +149,7 @@ def show_menu():
         # Play Online
         hover1 = button_online.collidepoint(mouse)
         pygame.draw.rect(screen, BUTTON_HOVER if hover1 else BUTTON_COLOR, button_online, border_radius=30)
-        btn1_text = button_font.render("Play Online", True, WHITE)
+        btn1_text = button_font.render("Multiplayer", True, WHITE)
         screen.blit(btn1_text, (button_online.x + (button_online.width-btn1_text.get_width())//2, button_online.y + 15))
         # Play vs AI
         hover2 = button_ai.collidepoint(mouse)

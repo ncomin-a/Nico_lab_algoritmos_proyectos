@@ -173,6 +173,50 @@ def draw_minimap(screen, snakes, food):
               pos_x + size // 2, pos_y - 20, center=True)
 
 
+def draw_hud_split(surface, player, offset_x, panel_w, label_color):
+    """HUD compacto para pantalla dividida. Se dibuja dentro de la mitad del jugador."""
+    font_med  = get_font(18, bold=True)
+    font_sm   = get_font(14)
+
+    px, py = offset_x + 10, 10
+    pw, ph = 200, 110
+
+    bg = pygame.Surface((pw, ph), pygame.SRCALPHA)
+    bg.fill((10, 10, 25, 190))
+    surface.blit(bg, (px, py))
+    pygame.draw.rect(surface, label_color, (px, py, pw, ph), 1)
+
+    # Franja de color del jugador arriba
+    pygame.draw.rect(surface, label_color, (px, py, pw, 4))
+
+    draw_text(surface, player.name, font_med, label_color, px + 8, py + 8)
+    draw_text(surface, f"Score: {player.score}", font_sm, (200, 255, 200), px + 8, py + 32)
+    draw_text(surface, f"Length: {player.length}", font_sm, (255, 180, 100), px + 8, py + 50)
+    draw_text(surface, f"Kills: {player.kills}", font_sm, (180, 255, 180), px + 8, py + 68)
+
+    # Barra de boost
+    bx, by = px + 8, py + 88
+    bw, bh = pw - 16, 12
+    pygame.draw.rect(surface, (50, 50, 50), (bx, by, bw, bh))
+    fill = int(bw * (player.boost_energy / player.max_boost_energy))
+    if getattr(player, "boost_depleted", False):
+        bcol = (160, 50, 50)
+    elif player.boost_energy < player.max_boost_energy * 0.5:
+        bcol = (255, 80, 80)
+    else:
+        bcol = (255, 200, 0)
+    pygame.draw.rect(surface, bcol, (bx, by, fill, bh))
+    pygame.draw.line(surface, (255,255,255), (bx + bw//2, by), (bx + bw//2, by + bh), 1)
+    draw_text(surface, "BOOST", get_font(10), (180,180,180), bx, by - 12)
+
+
+def draw_splitscreen_divider(screen):
+    """Línea divisoria central entre las dos mitades."""
+    mx = WIDTH // 2
+    pygame.draw.rect(screen, (30, 30, 50), (mx - 2, 0, 4, HEIGHT))
+    pygame.draw.line(screen, (80, 80, 120), (mx, 0), (mx, HEIGHT), 1)
+
+
 def draw_ranking(screen, snakes, player=None, max_show=10):
     """Ranking estilo slither.io en la esquina superior derecha."""
     alive = [s for s in snakes if s.alive]

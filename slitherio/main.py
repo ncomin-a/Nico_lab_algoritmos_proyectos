@@ -11,7 +11,7 @@ from constants import *
 from snake import PlayerSnake, BotSnake
 from food import generate
 from camera import Camera
-from ui import draw_hud, draw_minimap, draw_ranking
+from ui import draw_hud, draw_minimap, draw_ranking, draw_hud_split, draw_splitscreen_divider
 from ranking import save
 import particles
 
@@ -66,6 +66,210 @@ def show_start_screen():
 
     print("La pantalla de inicio no tiene show_menu().")
     return None
+
+
+# =========================
+# 🎮 SPLITSCREEN GAME LOOP
+# =========================
+def run_splitscreen(p1_name, p2_name):
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Slither.io PRO - Multijugador")
+    clock = pygame.time.Clock()
+
+    HALF_W = WIDTH // 2
+
+    particles.particles = []
+    food = generate()
+    powerups = []
+
+    # Jugador 1: WASD (izquierda)
+    p1 = PlayerSnake(PLAYER_COLORS[0], 0, PLAYER_KEYS[0],
+                     x=WORLD_W // 2 - 500, y=WORLD_H // 2)
+    p1.name = p1_name
+
+    # Jugador 2: Flechitas (derecha)
+    p2 = PlayerSnake(PLAYER_COLORS[2], 1, PLAYER_KEYS[1],
+                     x=WORLD_W // 2 + 500, y=WORLD_H // 2)
+    p2.name = p2_name
+
+    snakes = [p1, p2]
+
+    cam1 = Camera()
+    cam2 = Camera()
+    cam1.x = p1.head.x - (HALF_W / 2) / cam1.zoom
+    cam1.y = p1.head.y - (HEIGHT / 2) / cam1.zoom
+    cam2.x = p2.head.x - (HALF_W / 2) / cam2.zoom
+    cam2.y = p2.head.y - (HEIGHT / 2) / cam2.zoom
+
+    spawn_bots(snakes, BOT_COUNT_DEFAULT)
+
+    # Superficies para cada mitad
+    surf1 = pygame.Surface((HALF_W, HEIGHT))
+    surf2 = pygame.Surface((HALF_W, HEIGHT))
+
+    font_big   = pygame.font.SysFont("arial", 60, bold=True)
+    font_small = pygame.font.SysFont("arial", 26)
+
+    running = True
+
+    while running:
+        dt = clock.tick(FPS) / 1000.0
+        if dt > 0.05:
+            dt = 0.05
+
+        # INPUT GLOBAL
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                running = False
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    return False
+                if e.key == pygame.K_r and (not p1.alive or not p2.alive):
+                    pygame.quit()
+                    return run_splitscreen(p1_name, p2_name)
+
+        keys = pygame.key.get_pressed()
+
+        # INPUT JUGADORES (teclado directo, sin mouse)
+        if p1.alive:
+            p1.handle_keyboard_direction(keys, dt)
+            p1.boosting = keys[PLAYER_KEYS[0]["boost"]] and not p1.boost_depleted and p1.boost_energy > 0
+
+        if p2.alive:
+            p2.handle_keyboard_direction(keys, dt)
+            p2.boosting = keys[PLAYER_KEYS[1]["boost"]] and not p2.boost_depleted and p2.boost_energy > 0
+
+        # CÁMARAS
+        if p1.alive:
+            cam1.update((p1.head.x, p1.head.y), len(p1.segments) * SEGMENT_RADIUS)
+        if p2.alive:
+            cam2.update((p2.head.x, p2.head.y), len(p2.segments) * SEGMENT_RADIUS)
+
+        # UPDATE SERPIENTES
+        for s in snakes:
+            if s.alive:
+                if s.is_human:
+                    # Solo llamar super().update para humanos (el giro ya se hizo con handle_keyboard_direction)
+                    from snake import Snake
+                    Snake.update(s, dt)
+                else:
+                    s.ai_update(dt, food, snakes, powerups)
+
+        # COMER COMIDA
+        eaten = []
+        for food_item in food:
+            fx, fy = food_item
+            for snake in snakes:
+                if not snake.alive:
+                    continue
+                dist_sq = (snake.head.x - fx)**2 + (snake.head.y - fy)**2
+                if dist_sq < (SEGMENT_RADIUS + FOOD_RADIUS)**2:
+                    snake.grow()
+                    eaten.append(food_item)
+                    break
+        for f in eaten:
+            food.remove(f)
+
+        # COLISIONES
+        dead_snakes = []
+        for i, s1 in enumerate(snakes):
+            if not s1.alive:
+                continue
+            for s2 in snakes[i+1:]:
+                if not s2.alive:
+                    continue
+                if s1.collides_with_snake(s2, skip_head=False):
+                    if len(s1.segments) > len(s2.segments) + 2:
+                        s2.die(killer=s1)
+                        dead_snakes.append(s2)
+                    elif len(s2.segments) > len(s1.segments) + 2:
+                        s1.die(killer=s2)
+                        dead_snakes.append(s1)
+                    else:
+                        # Mismo tamaño: ambos mueren
+                        s1.die(killer=None)
+                        s2.die(killer=None)
+                        dead_snakes.extend([s1, s2])
+        for s in dead_snakes:
+            if s in snakes:
+                drop_food_from_snake(s, food)
+                if not s.is_human:
+                    snakes.remove(s)
+
+        # REGENERAR COMIDA
+        while len(food) < FOOD_COUNT:
+            food.append((random.randint(0, WORLD_W), random.randint(0, WORLD_H)))
+
+        # RESPAWN BOTS
+        bots_alive = sum(1 for s in snakes if not s.is_human)
+        if bots_alive < BOT_COUNT_DEFAULT:
+            spawn_bots(snakes, BOT_COUNT_DEFAULT - bots_alive)
+
+        # ========================= DIBUJO =========================
+        name_font = pygame.font.SysFont("arial", 14)
+
+        def draw_half(surf, cam, half_offset_x):
+            surf.fill(C_BG)
+            # Comida
+            for f in food:
+                sx, sy = cam.apply(f)
+                sx, sy = int(sx), int(sy)
+                if -50 < sx < HALF_W + 50 and -50 < sy < HEIGHT + 50:
+                    pygame.draw.circle(surf, FOOD_COLOR, (sx, sy), FOOD_RADIUS)
+            # Serpientes — dibujar relativo a esta cámara en la mitad
+            for s in snakes:
+                if not s.alive:
+                    continue
+                # Redirigir draw al surf con esta cámara
+                s.draw(surf, cam)
+                s.draw_name(surf, cam, name_font)
+
+        draw_half(surf1, cam1, 0)
+        draw_half(surf2, cam2, HALF_W)
+
+        # HUDs por mitad
+        draw_hud_split(surf1, p1, 0, HALF_W, (100, 200, 255))
+        draw_hud_split(surf2, p2, 0, HALF_W, (255, 110, 110))
+
+        # Volcar mitades a pantalla
+        screen.blit(surf1, (0, 0))
+        screen.blit(surf2, (HALF_W, 0))
+
+        # Línea divisoria
+        draw_splitscreen_divider(screen)
+
+        # Pantallas de game over individuales
+        for surf, player, ox in [(surf1, p1, 0), (surf2, p2, HALF_W)]:
+            if not player.alive:
+                ov = pygame.Surface((HALF_W, HEIGHT), pygame.SRCALPHA)
+                ov.fill((0, 0, 0, 140))
+                screen.blit(ov, (ox, 0))
+
+                killer_name = player.killed_by.name if player.killed_by else "el mundo"
+                lines = [
+                    ("MUERTO", font_big, (255, 60, 60)),
+                    (f"Eliminado por {killer_name}", font_small, (255, 200, 200)),
+                    (f"Score: {player.score}  |  Kills: {player.kills}", font_small, (255, 255, 255)),
+                    ("R = reiniciar  |  ESC = salir", font_small, (100, 255, 100)),
+                ]
+                cy = HEIGHT // 2 - 80
+                for text, font, color in lines:
+                    surf_t = font.render(text, True, color)
+                    screen.blit(surf_t, (ox + HALF_W//2 - surf_t.get_width()//2, cy))
+                    cy += surf_t.get_height() + 10
+
+        pygame.display.flip()
+
+    pygame.quit()
+    for p in [p1, p2]:
+        if p.score > 0:
+            try:
+                save(p.name, p.score)
+            except Exception as e:
+                print(f"Error saving score: {e}")
+    return True
 
 
 # =========================
@@ -282,6 +486,12 @@ def run_game(player_name):
     return True
 
 if __name__ == "__main__":
-    name = show_start_screen()
-    if name:
-        run_game(name)
+    result = show_start_screen()
+    if result:
+        if isinstance(result, tuple):
+            # Modo multijugador: (modo, nombre1, nombre2)
+            mode, name1, name2 = result
+            if mode == "splitscreen":
+                run_splitscreen(name1, name2)
+        else:
+            run_game(result)

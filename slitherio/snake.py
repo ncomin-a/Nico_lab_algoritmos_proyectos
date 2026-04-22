@@ -357,6 +357,23 @@ class PlayerSnake(Snake):
         if pressed[self.keys["right"]]:
             self.angle += TURN_SPEED * dt
 
+    def handle_keyboard_direction(self, pressed, dt):
+        """Gira directamente con teclas (para modo pantalla dividida, sin mouse)."""
+        turn = TURN_SPEED * 2.5 * dt
+        if pressed[self.keys["left"]]:
+            self.angle -= turn
+        if pressed[self.keys["right"]]:
+            self.angle += turn
+        if pressed[self.keys["up"]]:
+            # Girar hacia arriba: interpolar el ángulo hacia -pi/2
+            target = -math.pi / 2
+            diff = (target - self.angle + math.pi) % (2 * math.pi) - math.pi
+            self.angle += max(-turn, min(turn, diff))
+        if pressed[self.keys["down"]]:
+            target = math.pi / 2
+            diff = (target - self.angle + math.pi) % (2 * math.pi) - math.pi
+            self.angle += max(-turn, min(turn, diff))
+
     def update(self, dt):
         diff = (self.target_angle - self.angle + math.pi) % (2 * math.pi) - math.pi
         max_turn = TURN_SPEED * dt

@@ -95,12 +95,20 @@ POWERUP_ICONS = {
 }
 
 PLAYER_KEYS = [
-    # Jugador 1: WASD
+    # Jugador 1: WASD + LSHIFT boost
     {
         "up":    119,   # K_w
         "down":  115,   # K_s
         "left":  97,    # K_a
         "right": 100,   # K_d
         "boost": 304,   # K_LSHIFT
+    },
+    # Jugador 2: Flechitas + RSHIFT boost
+    {
+        "up":    273,   # K_UP
+        "down":  274,   # K_DOWN
+        "left":  276,   # K_LEFT
+        "right": 275,   # K_RIGHT
+        "boost": 303,   # K_RSHIFT
     },
 ]

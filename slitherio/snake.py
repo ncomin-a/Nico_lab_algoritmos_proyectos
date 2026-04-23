@@ -202,17 +202,6 @@ class Snake:
 
         return False
 
-        start = 1 if (other is self or skip_head) else 0
-        hx, hy = self.head.x, self.head.y
-
-        for seg in other.segments[start:]:
-            dx = hx - seg.x
-            dy = hy - seg.y
-            if dx * dx + dy * dy < (SEGMENT_RADIUS * 2) ** 2:
-                return True
-
-        return False
-
     def draw(self, surface: pygame.Surface, camera, alpha_override: int = 255):
         if not self.segments:
             return
@@ -322,12 +311,13 @@ class Snake:
         rect = label.get_rect(center=(hx, hy - SEGMENT_RADIUS * 2 - 4))
         surface.blit(label, rect)
 
-    def get_food_drops(self) -> list[tuple[float, float]]:
-        """Devuelve posiciones donde soltar comida al morir."""
+    def get_food_drops(self) -> list[tuple]:
+        """Devuelve comida coloreada con el color del gusano al morir."""
         drops = []
+        color = self.body_color  # Color del gusano muerto
         step = max(1, len(self.segments) // 20)
         for seg in self.segments[::step]:
-            drops.append((seg.x, seg.y))
+            drops.append((seg.x, seg.y, color))
         return drops
 
 
@@ -358,21 +348,18 @@ class PlayerSnake(Snake):
             self.angle += TURN_SPEED * dt
 
     def handle_keyboard_direction(self, pressed, dt):
-        """Gira directamente con teclas (para modo pantalla dividida, sin mouse)."""
-        turn = TURN_SPEED * 2.5 * dt
+        """Actualiza target_angle basado en input de teclado (para modo pantalla dividida)."""
+        # Si presiona left/right: rotar alrededor del ángulo actual
         if pressed[self.keys["left"]]:
-            self.angle -= turn
+            self.target_angle -= TURN_SPEED * 2.5 * dt
         if pressed[self.keys["right"]]:
-            self.angle += turn
+            self.target_angle += TURN_SPEED * 2.5 * dt
+        
+        # Si presiona up/down: apuntar hacia direcciones cardinales
         if pressed[self.keys["up"]]:
-            # Girar hacia arriba: interpolar el ángulo hacia -pi/2
-            target = -math.pi / 2
-            diff = (target - self.angle + math.pi) % (2 * math.pi) - math.pi
-            self.angle += max(-turn, min(turn, diff))
+            self.target_angle = -math.pi / 2  # Arriba
         if pressed[self.keys["down"]]:
-            target = math.pi / 2
-            diff = (target - self.angle + math.pi) % (2 * math.pi) - math.pi
-            self.angle += max(-turn, min(turn, diff))
+            self.target_angle = math.pi / 2   # Abajo
 
     def update(self, dt):
         diff = (self.target_angle - self.angle + math.pi) % (2 * math.pi) - math.pi

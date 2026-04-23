@@ -131,12 +131,13 @@ def draw_minimap(screen, snakes, food):
 
     scale = size / WORLD_SIZE
 
-    # Dibujar comida (pequeña)
+    # Dibujar comida (pequeña, con su color)
     for f in food:
         fx = int(f[0] * scale)
         fy = int(f[1] * scale)
         if 0 <= fx < size and 0 <= fy < size:
-            pygame.draw.circle(surf, FOOD_COLOR, (fx, fy), 1)
+            color = f[2] if len(f) > 2 else FOOD_COLOR
+            pygame.draw.circle(surf, color, (fx, fy), 1)
 
     # Dibujar serpientes (solo vivas)
     for s in snakes:

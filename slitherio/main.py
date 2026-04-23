@@ -9,11 +9,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from constants import *
 from snake import PlayerSnake, BotSnake
-from food import generate
+from food import generate, generate_single, generate_single_colored
 from camera import Camera
 from ui import draw_hud, draw_minimap, draw_ranking, draw_hud_split, draw_splitscreen_divider
 from ranking import save
 import particles
+
+
+def draw_food_orb(surface, color, sx, sy, radius=FOOD_RADIUS):
+    """Dibuja una bolita con glow al estilo del juego original."""
+    # Glow exterior (circulo difuso semitransparente)
+    glow_r = radius + 5
+    glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+    glow_color = (*color, 80)
+    pygame.draw.circle(glow_surf, glow_color, (glow_r, glow_r), glow_r)
+    surface.blit(glow_surf, (sx - glow_r, sy - glow_r))
+    # Cuerpo principal
+    pygame.draw.circle(surface, color, (sx, sy), radius)
+    # Brillo interior (destello blanco pequeño)
+    bright = (
+        min(255, color[0] + 100),
+        min(255, color[1] + 100),
+        min(255, color[2] + 100),
+    )
+    pygame.draw.circle(surface, bright, (sx - radius // 3, sy - radius // 3), max(1, radius // 3))
 
 
 # =========================
@@ -112,6 +131,7 @@ def run_splitscreen(p1_name, p2_name):
     font_small = pygame.font.SysFont("arial", 26)
 
     running = True
+    _restart = False
 
     while running:
         dt = clock.tick(FPS) / 1000.0
@@ -124,11 +144,10 @@ def run_splitscreen(p1_name, p2_name):
                 running = False
             if e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    return False
+                    running = False
                 if e.key == pygame.K_r and (not p1.alive or not p2.alive):
-                    pygame.quit()
-                    return run_splitscreen(p1_name, p2_name)
+                    running = False
+                    _restart = True
 
         keys = pygame.key.get_pressed()
 
@@ -151,16 +170,16 @@ def run_splitscreen(p1_name, p2_name):
         for s in snakes:
             if s.alive:
                 if s.is_human:
-                    # Solo llamar super().update para humanos (el giro ya se hizo con handle_keyboard_direction)
-                    from snake import Snake
-                    Snake.update(s, dt)
+                    # handle_keyboard_direction ya seteó target_angle,
+                    # PlayerSnake.update() interpola igual que en modo mouse
+                    s.update(dt)
                 else:
                     s.ai_update(dt, food, snakes, powerups)
 
         # COMER COMIDA
         eaten = []
         for food_item in food:
-            fx, fy = food_item
+            fx, fy = food_item[0], food_item[1]
             for snake in snakes:
                 if not snake.alive:
                     continue
@@ -200,7 +219,7 @@ def run_splitscreen(p1_name, p2_name):
 
         # REGENERAR COMIDA
         while len(food) < FOOD_COUNT:
-            food.append((random.randint(0, WORLD_W), random.randint(0, WORLD_H)))
+            food.append(generate_single())
 
         # RESPAWN BOTS
         bots_alive = sum(1 for s in snakes if not s.is_human)
@@ -214,10 +233,10 @@ def run_splitscreen(p1_name, p2_name):
             surf.fill(C_BG)
             # Comida
             for f in food:
-                sx, sy = cam.apply(f)
+                sx, sy = cam.apply((f[0], f[1]))
                 sx, sy = int(sx), int(sy)
                 if -50 < sx < HALF_W + 50 and -50 < sy < HEIGHT + 50:
-                    pygame.draw.circle(surf, FOOD_COLOR, (sx, sy), FOOD_RADIUS)
+                    draw_food_orb(surf, f[2], sx, sy)
             # Serpientes — dibujar relativo a esta cámara en la mitad
             for s in snakes:
                 if not s.alive:
@@ -262,14 +281,15 @@ def run_splitscreen(p1_name, p2_name):
 
         pygame.display.flip()
 
-    pygame.quit()
     for p in [p1, p2]:
         if p.score > 0:
             try:
                 save(p.name, p.score)
             except Exception as e:
                 print(f"Error saving score: {e}")
-    return True
+    
+    pygame.quit()
+    return _restart
 
 
 # =========================
@@ -355,7 +375,7 @@ def run_game(player_name):
         # =========================
         eaten = []
         for food_item in food:
-            fx, fy = food_item
+            fx, fy = food_item[0], food_item[1]
             for snake in snakes:
                 if not snake.alive:
                     continue
@@ -408,10 +428,7 @@ def run_game(player_name):
         # =========================
         if len(food) < FOOD_COUNT:
             for _ in range(FOOD_COUNT - len(food)):
-                food.append((
-                    random.randint(0, WORLD_W),
-                    random.randint(0, WORLD_H)
-                ))
+                food.append(generate_single())
 
         if len(food) > FOOD_COUNT * 1.5:
             food = food[:FOOD_COUNT]
@@ -429,11 +446,11 @@ def run_game(player_name):
         screen.fill(C_BG)
 
         for f in food:
-            screen_x, screen_y = camera.apply(f)
+            screen_x, screen_y = camera.apply((f[0], f[1]))
             screen_x = int(screen_x)
             screen_y = int(screen_y)
             if -50 < screen_x < WIDTH + 50 and -50 < screen_y < HEIGHT + 50:
-                pygame.draw.circle(screen, FOOD_COLOR, (screen_x, screen_y), FOOD_RADIUS)
+                draw_food_orb(screen, f[2], screen_x, screen_y)
 
         for s in snakes:
             if s.alive:
@@ -486,12 +503,17 @@ def run_game(player_name):
     return True
 
 if __name__ == "__main__":
-    result = show_start_screen()
-    if result:
+    while True:
+        result = show_start_screen()
+        if result is None:
+            break
+        
         if isinstance(result, tuple):
             # Modo multijugador: (modo, nombre1, nombre2)
             mode, name1, name2 = result
             if mode == "splitscreen":
-                run_splitscreen(name1, name2)
+                restart = run_splitscreen(name1, name2)
+                # Si restart es False, vuelve a la pantalla inicial
+                # Si restart es True, continúa el loop para mostrar pantalla inicial
         else:
             run_game(result)

@@ -94,21 +94,23 @@ POWERUP_ICONS = {
     PU_DOUBLE: "×2",
 }
 
+import pygame as _pg
+
 PLAYER_KEYS = [
     # Jugador 1: WASD + LSHIFT boost
     {
-        "up":    119,   # K_w
-        "down":  115,   # K_s
-        "left":  97,    # K_a
-        "right": 100,   # K_d
-        "boost": 304,   # K_LSHIFT
+        "up":    _pg.K_w,
+        "down":  _pg.K_s,
+        "left":  _pg.K_a,
+        "right": _pg.K_d,
+        "boost": _pg.K_LSHIFT,
     },
     # Jugador 2: Flechitas + RSHIFT boost
     {
-        "up":    273,   # K_UP
-        "down":  274,   # K_DOWN
-        "left":  276,   # K_LEFT
-        "right": 275,   # K_RIGHT
-        "boost": 303,   # K_RSHIFT
+        "up":    _pg.K_UP,
+        "down":  _pg.K_DOWN,
+        "left":  _pg.K_LEFT,
+        "right": _pg.K_RIGHT,
+        "boost": _pg.K_RSHIFT,
     },
 ]

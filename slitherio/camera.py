@@ -10,13 +10,14 @@ class Camera:
         self.velocity_y = 0
         self.shake = 0  # 🆕 Efecto de temblor
 
-    def update(self, target, mass):
+    def update(self, target, mass, screen_width=WIDTH):
         """
         Actualiza la cámara con zoom dinámico y suavizado avanzado
         
         Args:
             target: tupla (x, y) posición del objetivo
             mass: masa del objetivo para cálculo de zoom
+            screen_width: ancho de la pantalla para centrar (para splitscreen)
         """
         # 🎯 ZOOM DINÁMICO mejorado
         # Rango: 0.3x (serpiente grande) a 1.3x (serpiente pequeña)
@@ -27,7 +28,7 @@ class Camera:
         self.zoom += zoom_diff * 0.06  # Ligeramente más rápido que antes
 
         # 🎯 POSICIÓN OBJETIVO (centrar jugador)
-        target_x = target[0] - (WIDTH / 2) / self.zoom
+        target_x = target[0] - (screen_width / 2) / self.zoom
         target_y = target[1] - (HEIGHT / 2) / self.zoom
 
         # 🆕 SUAVIZADO DE CÁMARA con EASING (más natural)

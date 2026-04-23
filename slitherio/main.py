@@ -135,17 +135,17 @@ def run_splitscreen(p1_name, p2_name):
         # INPUT JUGADORES (teclado directo, sin mouse)
         if p1.alive:
             p1.handle_keyboard_direction(keys, dt)
-            p1.boosting = keys[PLAYER_KEYS[0]["boost"]] and not p1.boost_depleted and p1.boost_energy > 0
+            p1.boosting = keys[p1.keys["boost"]] and not p1.boost_depleted and p1.boost_energy > 0
 
         if p2.alive:
             p2.handle_keyboard_direction(keys, dt)
-            p2.boosting = keys[PLAYER_KEYS[1]["boost"]] and not p2.boost_depleted and p2.boost_energy > 0
+            p2.boosting = keys[p2.keys["boost"]] and not p2.boost_depleted and p2.boost_energy > 0
 
         # CÁMARAS
         if p1.alive:
-            cam1.update((p1.head.x, p1.head.y), len(p1.segments) * SEGMENT_RADIUS)
+            cam1.update((p1.head.x, p1.head.y), len(p1.segments) * SEGMENT_RADIUS, HALF_W)
         if p2.alive:
-            cam2.update((p2.head.x, p2.head.y), len(p2.segments) * SEGMENT_RADIUS)
+            cam2.update((p2.head.x, p2.head.y), len(p2.segments) * SEGMENT_RADIUS, HALF_W)
 
         # UPDATE SERPIENTES
         for s in snakes:

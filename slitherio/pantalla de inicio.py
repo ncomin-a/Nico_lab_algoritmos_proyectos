@@ -211,8 +211,8 @@ def show_menu():
             # Controles info
             info1 = sub_font.render("Jugador 1:  W A S D  +  LSHIFT (boost)", True, (180, 230, 180))
             info2 = sub_font.render("Jugador 2:  ↑ ↓ ← →  +  RSHIFT (boost)", True, (255, 180, 180))
-            screen.blit(info1, (WIDTH//2 - info1.get_width()//2, 285))
-            screen.blit(info2, (WIDTH//2 - info2.get_width()//2, 315))
+            screen.blit(info1, (WIDTH//2 - info1.get_width()//2, 140))
+            screen.blit(info2, (WIDTH//2 - info2.get_width()//2, 170))
 
             # Caja P1
             lbl1 = sub_font.render("Jugador 1", True, (100, 200, 255))

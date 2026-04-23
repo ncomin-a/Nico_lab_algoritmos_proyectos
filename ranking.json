@@ -1,5 +1,9 @@
 [
   {
+    "name": "asd",
+    "score": 1080
+  },
+  {
     "name": "nickson",
     "score": 670
   },
@@ -16,6 +20,10 @@
     "score": 590
   },
   {
+    "name": "fd",
+    "score": 480
+  },
+  {
     "name": "nickson",
     "score": 380
   },
@@ -24,19 +32,11 @@
     "score": 340
   },
   {
+    "name": "vd",
+    "score": 300
+  },
+  {
     "name": "nickson",
     "score": 290
-  },
-  {
-    "name": "nickson",
-    "score": 250
-  },
-  {
-    "name": "njhv",
-    "score": 230
-  },
-  {
-    "name": "h",
-    "score": 201
   }
 ]

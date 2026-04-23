@@ -92,6 +92,18 @@ def show_start_screen():
 # =========================
 def run_splitscreen(p1_name, p2_name):
     pygame.init()
+    
+    # Intentar cargar música
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        music_path = os.path.join(base_dir, "musica_fondo.mp3")
+        pygame.mixer.music.load(music_path)
+        pygame.mixer.music.set_volume(1.0)
+        pygame.mixer.music.play(-1)  # Reproducir en bucle
+        print(f"✓ Música cargada desde: {music_path}")
+    except Exception as e:
+        print(f"⚠ No se pudo cargar música: {e}")
+    
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Slither.io PRO - Multijugador")
     clock = pygame.time.Clock()
@@ -192,25 +204,43 @@ def run_splitscreen(p1_name, p2_name):
             food.remove(f)
 
         # COLISIONES
+        # Reglas: cabeza toca cuerpo → muere la cabeza
+        #         cabeza vs cabeza → gana el más grande (o ambos mueren si igual)
         dead_snakes = []
         for i, s1 in enumerate(snakes):
             if not s1.alive:
                 continue
-            for s2 in snakes[i+1:]:
+            for s2 in snakes[i + 1:]:
                 if not s2.alive:
                     continue
-                if s1.collides_with_snake(s2, skip_head=False):
-                    if len(s1.segments) > len(s2.segments) + 2:
-                        s2.die(killer=s1)
-                        dead_snakes.append(s2)
-                    elif len(s2.segments) > len(s1.segments) + 2:
+
+                # Choque cabeza-cabeza
+                dx = s1.head.x - s2.head.x
+                dy = s1.head.y - s2.head.y
+                heads_collide = (dx * dx + dy * dy) < (SEGMENT_RADIUS * 2.2) ** 2
+
+                # s1 cabeza vs cuerpo de s2 (saltar cabeza de s2)
+                s1_hits_s2 = (not heads_collide) and s1.collides_with_snake(s2, skip_head=True)
+                # s2 cabeza vs cuerpo de s1 (saltar cabeza de s1)
+                s2_hits_s1 = (not heads_collide) and s2.collides_with_snake(s1, skip_head=True)
+
+                if heads_collide:
+                    if s1 not in dead_snakes and s2 not in dead_snakes:
+                        if len(s1.segments) > len(s2.segments) + 2:
+                            s2.die(killer=s1); dead_snakes.append(s2)
+                        elif len(s2.segments) > len(s1.segments) + 2:
+                            s1.die(killer=s2); dead_snakes.append(s1)
+                        else:
+                            s1.die(killer=None); dead_snakes.append(s1)
+                            s2.die(killer=None); dead_snakes.append(s2)
+                else:
+                    if s1_hits_s2 and s1 not in dead_snakes and not s2.has_ghost:
                         s1.die(killer=s2)
                         dead_snakes.append(s1)
-                    else:
-                        # Mismo tamaño: ambos mueren
-                        s1.die(killer=None)
-                        s2.die(killer=None)
-                        dead_snakes.extend([s1, s2])
+                    if s2_hits_s1 and s2 not in dead_snakes and not s1.has_ghost:
+                        s2.die(killer=s1)
+                        dead_snakes.append(s2)
+
         for s in dead_snakes:
             if s in snakes:
                 drop_food_from_snake(s, food)
@@ -297,6 +327,18 @@ def run_splitscreen(p1_name, p2_name):
 # =========================
 def run_game(player_name):
     pygame.init()
+    
+    # Intentar cargar música
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        music_path = os.path.join(base_dir, "musica_fondo.mp3")
+        pygame.mixer.music.load(music_path)
+        pygame.mixer.music.set_volume(1.0)
+        pygame.mixer.music.play(-1)  # Reproducir en bucle
+        print(f"✓ Música cargada desde: {music_path}")
+    except Exception as e:
+        print(f"⚠ No se pudo cargar música: {e}")
+    
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Slither.io PRO")
     clock = pygame.time.Clock()
@@ -391,18 +433,10 @@ def run_game(player_name):
 
         # =========================
         # COLLISION DETECTION
+        # Reglas: cabeza toca cuerpo → muere la cabeza
+        #         cabeza vs cabeza → gana el más grande (o ambos mueren si igual)
         # =========================
         dead_snakes = []
-
-        for s in snakes:
-            if not s.alive or s == player:
-                continue
-
-            # 🔥 si el BOT toca al PLAYER (cuerpo)
-            if s.collides_with_snake(player, skip_head=True):
-                if not getattr(s, "has_shield", False):
-                    s.die(killer=player)
-                    dead_snakes.append(s)
 
         for i, s1 in enumerate(snakes):
             if not s1.alive:
@@ -410,18 +444,42 @@ def run_game(player_name):
             for s2 in snakes[i + 1:]:
                 if not s2.alive:
                     continue
-                if s1.collides_with_snake(s2, skip_head=False):
-                    if len(s1.segments) > len(s2.segments) + 2:
-                        s2.die(killer=s1)
-                        dead_snakes.append(s2)
-                    elif len(s2.segments) > len(s1.segments) + 2:
+
+                # Choque cabeza-cabeza
+                dx = s1.head.x - s2.head.x
+                dy = s1.head.y - s2.head.y
+                heads_collide = (dx * dx + dy * dy) < (SEGMENT_RADIUS * 2.2) ** 2
+
+                # s1 cabeza vs cuerpo de s2
+                s1_hits_s2 = (not heads_collide) and s1.collides_with_snake(s2, skip_head=True)
+                # s2 cabeza vs cuerpo de s1
+                s2_hits_s1 = (not heads_collide) and s2.collides_with_snake(s1, skip_head=True)
+
+                if heads_collide:
+                    if s1 not in dead_snakes and s2 not in dead_snakes:
+                        if len(s1.segments) > len(s2.segments) + 2:
+                            s2.die(killer=s1); dead_snakes.append(s2)
+                        elif len(s2.segments) > len(s1.segments) + 2:
+                            s1.die(killer=s2); dead_snakes.append(s1)
+                        else:
+                            s1.die(killer=None); dead_snakes.append(s1)
+                            s2.die(killer=None); dead_snakes.append(s2)
+                else:
+                    if s1_hits_s2 and s1 not in dead_snakes and not s2.has_ghost:
                         s1.die(killer=s2)
                         dead_snakes.append(s1)
+                    if s2_hits_s1 and s2 not in dead_snakes and not s1.has_ghost:
+                        s2.die(killer=s1)
+                        dead_snakes.append(s2)
 
         for s in dead_snakes:
             if s in snakes:
                 drop_food_from_snake(s, food)
                 snakes.remove(s)
+
+        # Detectar game over del jugador
+        if not player.alive and not game_over:
+            game_over = True
 
         # =========================
         # FOOD REGENERATION
